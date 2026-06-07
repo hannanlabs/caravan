@@ -21,7 +21,7 @@ interface InvestModalProps {
   title: string;
   sub: string;
   /** which 0–1 metric this invests in */
-  metric: 'education' | 'health';
+  metric: 'education' | 'health' | 'military' | 'technology';
 }
 
 export function InvestModal(props: InvestModalProps) {
@@ -36,7 +36,8 @@ export function InvestModal(props: InvestModalProps) {
     );
   }
 
-  const cur = myNation[metric]; // 0–1
+  const rawCur = myNation[metric]; // 0–1
+  const cur = Number.isFinite(rawCur) ? rawCur : 0;
   const gain = amount / 100; // +1.0 pt per 100 spent
   const projected = Math.min(100, cur * 100 + gain);
   const valid = amount > 0;

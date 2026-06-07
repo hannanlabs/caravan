@@ -37,6 +37,8 @@ import {
 import ClaimNationReducer from "./claim_nation_reducer";
 import InvestEducationReducer from "./invest_education_reducer";
 import InvestHealthcareReducer from "./invest_healthcare_reducer";
+import InvestMilitaryReducer from "./invest_military_reducer";
+import InvestTechnologyReducer from "./invest_technology_reducer";
 import ProposeTradeReducer from "./propose_trade_reducer";
 import ResetGameReducer from "./reset_game_reducer";
 import RespondTradeReducer from "./respond_trade_reducer";
@@ -143,6 +145,8 @@ const reducersSchema = __reducers(
   __reducerSchema("claim_nation", ClaimNationReducer),
   __reducerSchema("invest_education", InvestEducationReducer),
   __reducerSchema("invest_healthcare", InvestHealthcareReducer),
+  __reducerSchema("invest_military", InvestMilitaryReducer),
+  __reducerSchema("invest_technology", InvestTechnologyReducer),
   __reducerSchema("propose_trade", ProposeTradeReducer),
   __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("respond_trade", RespondTradeReducer),

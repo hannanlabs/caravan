@@ -430,11 +430,11 @@ button { cursor: pointer; border: none; background: none; }
 .id-stat .ids-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin-top: 3px; }
 
 /* action buttons */
-.actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 14px; }
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
 .action {
   position: relative;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
-  padding: 15px 15px 14px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: 12px 13px 11px;
   border-radius: 13px;
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--line);
@@ -444,12 +444,12 @@ button { cursor: pointer; border: none; background: none; }
 .action:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--accent), 0 6px 18px -8px rgba(50,87,229,.4); transform: translateY(-2px); }
 .action:disabled { opacity: .5; cursor: not-allowed; }
 .action .a-icon {
-  width: 38px; height: 38px; border-radius: 10px;
+  width: 34px; height: 34px; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   background: var(--accent-soft); color: var(--accent);
 }
 .action .a-label { font-weight: 600; font-size: 14px; letter-spacing: -.01em; }
-.action .a-sub { font-size: 11.5px; color: var(--ink-3); margin-top: -10px; }
+.action .a-sub { font-size: 11.5px; color: var(--ink-3); margin-top: -7px; }
 
 /* notice for incoming trades */
 .action.notice { box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
@@ -478,7 +478,7 @@ button { cursor: pointer; border: none; background: none; }
 .winner .trophy { font-size: 20px; }
 
 /* ---------- main grid ---------- */
-.grid { display: grid; grid-template-columns: 270px 1fr 320px; gap: 14px; min-height: 0; flex: 1 1 auto; }
+.grid { display: grid; grid-template-columns: 210px 1fr 264px; gap: 14px; min-height: 0; flex: 1 1 auto; }
 .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; padding-right: 3px; }
 .col::-webkit-scrollbar { width: 8px; }
 .col::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }

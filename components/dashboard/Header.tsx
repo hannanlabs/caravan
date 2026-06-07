@@ -4,7 +4,7 @@ import { metaFor, flagFor, allCountryNames } from '../../lib/countries';
 import { formatGdpShort, formatMoneyShort } from '../../lib/format';
 import type { NationData } from '../../lib/spacetimedb-server';
 import type { ActionModal } from './types';
-import { IconChart, IconExchange, IconBook, IconPulse, IconBank, IconPlay } from '../icons';
+import { IconChart, IconExchange, IconBook, IconPulse, IconBank, IconPlay, IconShield, IconCpu } from '../icons';
 
 interface HeaderProps {
   isActive: boolean;
@@ -155,6 +155,8 @@ function ActionsBody(props: HeaderProps) {
     { id: 'trade', icon: <IconExchange />, label: 'Trade', sub: 'Diplomacy', badge: incomingCount },
     { id: 'education', icon: <IconBook />, label: 'Education', sub: 'Invest' },
     { id: 'healthcare', icon: <IconPulse />, label: 'Healthcare', sub: 'Invest' },
+    { id: 'military', icon: <IconShield />, label: 'Military', sub: 'Invest' },
+    { id: 'technology', icon: <IconCpu />, label: 'Technology', sub: 'Invest' },
     { id: 'taxes', icon: <IconBank />, label: 'Taxes', sub: 'Policy' },
   ];
 

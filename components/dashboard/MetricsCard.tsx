@@ -2,13 +2,16 @@
 
 import type { NationData } from '../../lib/spacetimedb-server';
 
+// Guard against missing/NaN values (e.g. rows from a pre-migration module).
+const pct = (v: number) => (Number.isFinite(v) ? Math.round(v * 100) : 0);
+
 export function MetricsCard({ myNation }: { myNation?: NationData }) {
-  const rows: { label: string; value: number | null; future?: boolean }[] = [
-    { label: 'Military', value: null, future: true },
-    { label: 'Technology', value: null, future: true },
-    { label: 'Education', value: myNation ? Math.round(myNation.education * 100) : 0 },
-    { label: 'Health', value: myNation ? Math.round(myNation.health * 100) : 0 },
-    { label: 'Tax rate', value: myNation ? Math.round(myNation.taxRate * 100) : 0 },
+  const rows: { label: string; value: number }[] = [
+    { label: 'Military', value: myNation ? pct(myNation.military) : 0 },
+    { label: 'Technology', value: myNation ? pct(myNation.technology) : 0 },
+    { label: 'Education', value: myNation ? pct(myNation.education) : 0 },
+    { label: 'Health', value: myNation ? pct(myNation.health) : 0 },
+    { label: 'Tax rate', value: myNation ? pct(myNation.taxRate) : 0 },
   ];
 
   return (
@@ -19,17 +22,8 @@ export function MetricsCard({ myNation }: { myNation?: NationData }) {
       {rows.map((r) => (
         <div className="mrow" key={r.label}>
           <span className="m-label">{r.label}</span>
-          {r.future ? (
-            <>
-              <span className="m-future">Coming soon</span>
-              <span />
-            </>
-          ) : (
-            <>
-              <div className="bar"><i style={{ width: `${r.value ?? 0}%` }} /></div>
-              <span className="m-val tnum">{r.value}</span>
-            </>
-          )}
+          <div className="bar"><i style={{ width: `${r.value}%` }} /></div>
+          <span className="m-val tnum">{r.value}</span>
         </div>
       ))}
     </div>

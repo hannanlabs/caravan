@@ -15,6 +15,8 @@ import { EducationModal } from '../components/EducationModal';
 import { HealthcareModal } from '../components/HealthcareModal';
 import { TaxesModal } from '../components/TaxesModal';
 import { StatsModal } from '../components/StatsModal';
+import { MilitaryModal } from '../components/MilitaryModal';
+import { TechnologyModal } from '../components/TechnologyModal';
 
 // Dashboard layout components
 import { TopBar } from '../components/dashboard/TopBar';
@@ -56,6 +58,8 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const start = useReducer(reducers.startRun);
   const invest = useReducer(reducers.investEducation);
   const investHealth = useReducer(reducers.investHealthcare);
+  const investMil = useReducer(reducers.investMilitary);
+  const investTech = useReducer(reducers.investTechnology);
   const tax = useReducer(reducers.setTax);
   const propose = useReducer(reducers.proposeTrade);
   const respond = useReducer(reducers.respondTrade);
@@ -93,6 +97,8 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const [openModal, setOpenModal] = useState<ActionModal>(null);
   const [investAmt, setInvestAmt] = useState<number>(100);
   const [healthAmt, setHealthAmt] = useState<number>(100);
+  const [militaryAmt, setMilitaryAmt] = useState<number>(100);
+  const [technologyAmt, setTechnologyAmt] = useState<number>(100);
 
   useEffect(() => {
     if (myNation) setTaxInput(Math.round(myNation.taxRate * 100));
@@ -239,6 +245,24 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         healthAmt={healthAmt}
         setHealthAmt={setHealthAmt}
         onInvest={(amount) => investHealth({ amount })}
+      />
+      <MilitaryModal
+        open={openModal === 'military'}
+        onClose={() => setOpenModal(null)}
+        myNation={myNation}
+        isActive={isActive}
+        amount={militaryAmt}
+        setAmount={setMilitaryAmt}
+        onInvest={(amount) => investMil({ amount })}
+      />
+      <TechnologyModal
+        open={openModal === 'technology'}
+        onClose={() => setOpenModal(null)}
+        myNation={myNation}
+        isActive={isActive}
+        amount={technologyAmt}
+        setAmount={setTechnologyAmt}
+        onInvest={(amount) => investTech({ amount })}
       />
       <TaxesModal
         open={openModal === 'taxes'}

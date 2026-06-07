@@ -27,6 +27,8 @@ export const Nation = __t.object("Nation", {
   education: __t.f32(),
   taxRate: __t.f32(),
   health: __t.f32(),
+  military: __t.f32(),
+  technology: __t.f32(),
   gdp: __t.f64(),
 });
 export type Nation = __Infer<typeof Nation>;

@@ -1,1 +1,9 @@
-export type ActionModal = 'trade' | 'education' | 'healthcare' | 'taxes' | 'stats' | null;
+export type ActionModal =
+  | 'trade'
+  | 'education'
+  | 'healthcare'
+  | 'taxes'
+  | 'military'
+  | 'technology'
+  | 'stats'
+  | null;
