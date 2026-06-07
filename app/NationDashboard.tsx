@@ -425,23 +425,6 @@ function Header(props: HeaderProps) {
       </div>
 
       <div className="card">
-        <div className="card-title">Country's GDP</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
-          <div>
-            <span className="gdp-headline">${headlineGdp.value}</span>
-            <span className="gdp-unit">{headlineGdp.unit}</span>
-            {myNation && <span className="gdp-delta">+{(myNation.education * 100).toFixed(1)}% edu</span>}
-          </div>
-          <Sparkline history={history} width={140} height={36} />
-        </div>
-        <div className="gdp-substats">
-          <Stat label="Rank" value={rank > 0 ? `${rank}${rankSuffix(rank)}` : '—'} foot="" />
-          <Stat label="World Share" value={myNation ? `${worldShare.toFixed(1)}%` : '—'} foot="" />
-          <Stat label="Money" value={myNation ? formatMoneyShort(myNation.money) : '—'} foot="cash" />
-        </div>
-      </div>
-
-      <div className="card">
         <div className="card-title">Actions</div>
         <HeaderActions
           isActive={isActive}
