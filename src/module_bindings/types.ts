@@ -21,6 +21,37 @@ export const Nation = __t.object("Nation", {
 });
 export type Nation = __Infer<typeof Nation>;
 
+// The tagged union or sum type for the algebraic type `Resource`.
+export const Resource = __t.enum("Resource", {
+  Goods: __t.unit(),
+  Energy: __t.unit(),
+});
+export type Resource = __Infer<typeof Resource>;
+
+export const TradeOffer = __t.object("TradeOffer", {
+  id: __t.u64(),
+  fromOwner: __t.identity(),
+  toOwner: __t.identity(),
+  get giveResource() {
+    return Resource;
+  },
+  giveAmount: __t.u64(),
+  get getResource() {
+    return Resource;
+  },
+  getAmount: __t.u64(),
+  createdAt: __t.timestamp(),
+});
+export type TradeOffer = __Infer<typeof TradeOffer>;
+
+export const Trust = __t.object("Trust", {
+  id: __t.u64(),
+  fromOwner: __t.identity(),
+  toOwner: __t.identity(),
+  value: __t.u8(),
+});
+export type Trust = __Infer<typeof Trust>;
+
 export const World = __t.object("World", {
   id: __t.u8(),
   year: __t.f32(),
