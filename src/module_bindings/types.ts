@@ -10,6 +10,14 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const GdpHistory = __t.object("GdpHistory", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  year: __t.f32(),
+  gdp: __t.f64(),
+});
+export type GdpHistory = __Infer<typeof GdpHistory>;
+
 export const Nation = __t.object("Nation", {
   owner: __t.identity(),
   name: __t.string(),
@@ -62,6 +70,15 @@ export const World = __t.object("World", {
   },
 });
 export type World = __Infer<typeof World>;
+
+export const WorldEvent = __t.object("WorldEvent", {
+  id: __t.u64(),
+  year: __t.f32(),
+  createdAt: __t.timestamp(),
+  actorName: __t.string(),
+  text: __t.string(),
+});
+export type WorldEvent = __Infer<typeof WorldEvent>;
 
 // The tagged union or sum type for the algebraic type `WorldStatus`.
 export const WorldStatus = __t.enum("WorldStatus", {

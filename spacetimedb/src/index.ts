@@ -73,7 +73,32 @@ const trust = table(
   }
 );
 
-const spacetimedb = schema({ world, nation, tradeOffer, trust });
+const worldEvent = table(
+  { name: 'world_event', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    year: t.f32(),
+    createdAt: t.timestamp(),
+    actorName: t.string(),
+    text: t.string(),
+  }
+);
+
+const gdpHistory = table(
+  {
+    name: 'gdp_history',
+    public: true,
+    indexes: [{ accessor: 'by_owner', algorithm: 'btree', columns: ['owner'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    owner: t.identity(),
+    year: t.f32(),
+    gdp: t.f64(),
+  }
+);
+
+const spacetimedb = schema({ world, nation, tradeOffer, trust, worldEvent, gdpHistory });
 export default spacetimedb;
 
 const STARTING_MONEY = 1000n;
@@ -162,22 +187,63 @@ function computeGdp(n: {
 }
 
 function tickAll(ctx: Ctx) {
+  const w = getWorld(ctx);
+  const newYear = Math.floor(w.year + TIME_STEP);
   for (const n of [...ctx.db.nation.iter()]) {
     const growth = BASE_PRODUCTION * (1 + n.education) * (1 - n.taxRate);
     const resourceBonus = (n.goods + n.energy) / 10n;
     const newMoney = n.money + BigInt(Math.floor(growth)) + resourceBonus;
     const updated = { ...n, money: newMoney };
-    ctx.db.nation.owner.update({ ...updated, gdp: computeGdp(updated) });
+    const newGdp = computeGdp(updated);
+    ctx.db.nation.owner.update({ ...updated, gdp: newGdp });
+    ctx.db.gdpHistory.insert({ id: 0n, owner: n.owner, year: newYear, gdp: newGdp });
   }
+}
+
+function recordBaseline(ctx: Ctx, owner: any, gdp: number) {
+  ctx.db.gdpHistory.insert({ id: 0n, owner, year: 0, gdp });
 }
 
 function advanceTime(ctx: Ctx) {
   const w = getWorld(ctx);
   const after = w.year + TIME_STEP;
-  if (Math.floor(after) > Math.floor(w.year)) tickAll(ctx);
+  if (Math.floor(after) > Math.floor(w.year)) {
+    tickAll(ctx);
+    logEvent(ctx, 'System', `Year ${Math.floor(after)} begins.`);
+  }
   const status: typeof w.status =
     after >= GAME_END_YEAR ? { tag: 'ended' } : w.status;
   ctx.db.world.id.update({ ...w, year: after, status });
+  if (after >= GAME_END_YEAR && w.status.tag !== 'ended') {
+    // Winner = highest gdp at the end.
+    let winner: { name: string; gdp: number } | null = null;
+    for (const n of ctx.db.nation.iter()) {
+      if (!winner || n.gdp > winner.gdp) winner = { name: n.name, gdp: n.gdp };
+    }
+    if (winner) logEvent(ctx, winner.name, `🏆 ${winner.name} wins with GDP $${winner.gdp.toFixed(0)}M.`);
+  }
+}
+
+const MAX_EVENTS = 200;
+
+function logEvent(ctx: Ctx, actorName: string, text: string) {
+  const w = getWorld(ctx);
+  ctx.db.worldEvent.insert({
+    id: 0n,
+    year: w.year,
+    createdAt: ctx.timestamp,
+    actorName,
+    text,
+  });
+  // Cheap prune: if we have more than the cap, drop the oldest ids.
+  const all = [...ctx.db.worldEvent.iter()];
+  if (all.length > MAX_EVENTS) {
+    const sorted = all.sort((a, b) => (a.id < b.id ? -1 : 1));
+    const excess = sorted.length - MAX_EVENTS;
+    for (let i = 0; i < excess; i++) {
+      ctx.db.worldEvent.id.delete(sorted[i]!.id);
+    }
+  }
 }
 
 /* ---------- demo seeds ---------- */
@@ -225,7 +291,9 @@ export const init = spacetimedb.init((ctx) => {
       taxRate: s.taxRate,
       health: s.health,
     };
-    ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
+    const seedGdp = computeGdp(row);
+    ctx.db.nation.insert({ ...row, gdp: seedGdp });
+    recordBaseline(ctx, row.owner, seedGdp);
   }
 });
 
@@ -243,9 +311,15 @@ export const claimNation = spacetimedb.reducer(
     // If a seat with this name already exists (a bot seed), take it over.
     const existing = [...ctx.db.nation.iter()].find((n) => n.name === name);
     if (existing) {
+      // Inherit the bot's existing history rows by re-pointing owner.
+      for (const h of [...ctx.db.gdpHistory.by_owner.filter(existing.owner)]) {
+        ctx.db.gdpHistory.id.update({ ...h, owner: ctx.sender });
+      }
       ctx.db.nation.owner.delete(existing.owner);
       const taken = { ...existing, owner: ctx.sender };
-      ctx.db.nation.insert({ ...taken, gdp: computeGdp(taken) });
+      const takenGdp = computeGdp(taken);
+      ctx.db.nation.insert({ ...taken, gdp: takenGdp });
+      logEvent(ctx, name, `${name} joined the world.`);
       return;
     }
     const fresh = {
@@ -258,15 +332,19 @@ export const claimNation = spacetimedb.reducer(
       taxRate: STARTING_TAX,
       health: STARTING_HEALTH,
     };
-    ctx.db.nation.insert({ ...fresh, gdp: computeGdp(fresh) });
+    const freshGdp = computeGdp(fresh);
+    ctx.db.nation.insert({ ...fresh, gdp: freshGdp });
+    recordBaseline(ctx, ctx.sender, freshGdp);
+    logEvent(ctx, name, `${name} joined the world.`);
   }
 );
 
 export const startRun = spacetimedb.reducer((ctx) => {
   const w = getWorld(ctx);
   if (w.status.tag !== 'lobby') throw new Error('already started');
-  requireMyNation(ctx);
+  const me = requireMyNation(ctx);
   ctx.db.world.id.update({ ...w, status: { tag: 'running' } });
+  logEvent(ctx, 'System', `🏁 The simulation begins. ${me.name} hit Start.`);
 });
 
 export const investEducation = spacetimedb.reducer(
@@ -282,6 +360,7 @@ export const investEducation = spacetimedb.reducer(
       money: n.money - amount,
       education: clamp01(n.education + educationGain),
     });
+    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in 📚 Education.`);
     advanceTime(ctx);
   }
 );
@@ -299,6 +378,7 @@ export const investHealthcare = spacetimedb.reducer(
       money: n.money - amount,
       health: clamp01(n.health + healthGain),
     });
+    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in ❤ Healthcare.`);
     advanceTime(ctx);
   }
 );
@@ -308,7 +388,9 @@ export const setTax = spacetimedb.reducer(
   (ctx, { rate }) => {
     requireRunning(ctx);
     const n = requireMyNation(ctx);
-    ctx.db.nation.owner.update({ ...n, taxRate: clamp01(rate) });
+    const clamped = clamp01(rate);
+    ctx.db.nation.owner.update({ ...n, taxRate: clamped });
+    logEvent(ctx, n.name, `🏛 ${n.name} set tax rate to ${(clamped * 100).toFixed(0)}%.`);
     advanceTime(ctx);
   }
 );
@@ -325,6 +407,12 @@ export const resetGame = spacetimedb.reducer((ctx) => {
   for (const r of [...ctx.db.trust.iter()]) {
     ctx.db.trust.id.delete(r.id);
   }
+  for (const e of [...ctx.db.worldEvent.iter()]) {
+    ctx.db.worldEvent.id.delete(e.id);
+  }
+  for (const h of [...ctx.db.gdpHistory.iter()]) {
+    ctx.db.gdpHistory.id.delete(h.id);
+  }
   for (const s of SEED_NATIONS) {
     const row = {
       owner: Identity.fromString(s.hex),
@@ -336,7 +424,9 @@ export const resetGame = spacetimedb.reducer((ctx) => {
       taxRate: s.taxRate,
       health: s.health,
     };
-    ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
+    const seedGdp = computeGdp(row);
+    ctx.db.nation.insert({ ...row, gdp: seedGdp });
+    recordBaseline(ctx, row.owner, seedGdp);
   }
   const w = getWorld(ctx);
   ctx.db.world.id.update({ ...w, year: 0, status: { tag: 'lobby' } });
@@ -374,6 +464,11 @@ export const proposeTrade = spacetimedb.reducer(
       getAmount,
       createdAt: ctx.timestamp,
     });
+    logEvent(
+      ctx,
+      me.name,
+      `🤝 ${me.name} offered ${counterparty.name}: ${giveAmount.toString()} ${giveResource.tag} for ${getAmount.toString()} ${getResource.tag}.`,
+    );
     advanceTime(ctx);
   }
 );
@@ -391,6 +486,11 @@ export const respondTrade = spacetimedb.reducer(
     if (!approve) {
       // Proposer (offer.fromOwner) loses trust in the rejecter (offer.toOwner).
       bumpTrust(ctx, offer.fromOwner, offer.toOwner, -5);
+      const proposer = ctx.db.nation.owner.find(offer.fromOwner);
+      const responder = ctx.db.nation.owner.find(offer.toOwner);
+      if (proposer && responder) {
+        logEvent(ctx, responder.name, `❌ ${responder.name} rejected ${proposer.name}'s trade.`);
+      }
       ctx.db.tradeOffer.id.delete(offerId);
       advanceTime(ctx);
       return;
@@ -422,6 +522,11 @@ export const respondTrade = spacetimedb.reducer(
     // Both parties gain trust on a successful trade.
     bumpTrust(ctx, offer.fromOwner, offer.toOwner, 5);
     bumpTrust(ctx, offer.toOwner, offer.fromOwner, 5);
+    logEvent(
+      ctx,
+      responder.name,
+      `✅ ${responder.name} accepted ${proposer.name}'s trade · ${offer.giveAmount.toString()} ${offer.giveResource.tag} ↔ ${offer.getAmount.toString()} ${offer.getResource.tag}.`,
+    );
     ctx.db.tradeOffer.id.delete(offerId);
     advanceTime(ctx);
   }

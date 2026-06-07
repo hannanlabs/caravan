@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
 import { tables, reducers } from '../src/module_bindings';
 import type { Resource } from '../src/module_bindings/types';
 import TradeOfferRow from '../src/module_bindings/trade_offer_table';
 import TrustRow from '../src/module_bindings/trust_table';
-import type { Infer } from 'spacetimedb';
+import WorldEventRow from '../src/module_bindings/world_event_table';
+import GdpHistoryRow from '../src/module_bindings/gdp_history_table';
+import type { Infer, Timestamp } from 'spacetimedb';
 import type { InitialSnapshot, WorldData, NationData } from '../lib/spacetimedb-server';
 import { flagFor, metaFor } from '../lib/countries';
 import { WorldMap } from './WorldMap';
@@ -16,6 +18,8 @@ type ActionModal = 'trade' | 'education' | 'healthcare' | 'taxes' | 'stats' | nu
 
 type TradeOfferData = Infer<typeof TradeOfferRow>;
 type TrustData = Infer<typeof TrustRow>;
+type WorldEventData = Infer<typeof WorldEventRow>;
+type GdpHistoryData = Infer<typeof GdpHistoryRow>;
 
 interface NationDashboardProps {
   initialSnapshot: InitialSnapshot;
@@ -35,6 +39,8 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const [nations, nationsReady] = useTable(tables.nation);
   const [tradeOffers] = useTable(tables.tradeOffer);
   const [trustRows] = useTable(tables.trust);
+  const [events] = useTable(tables.worldEvent);
+  const [gdpRows] = useTable(tables.gdpHistory);
 
   const claim = useReducer(reducers.claimNation);
   const start = useReducer(reducers.startRun);
@@ -83,8 +89,13 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
     if (myNation) setTaxInput(Math.round(myNation.taxRate * 100));
   }, [myNation?.owner.toHexString()]);
 
-  // Track my GDP history client-side for the sparkline.
-  const moneyHistory = useGdpHistory(world?.year ?? 0, myNation?.gdp);
+  // Pull my GDP history from the server-side gdp_history table.
+  const moneyHistory: MoneyPoint[] = myNation
+    ? gdpRows
+        .filter((r) => r.owner.toHexString() === myNation.owner.toHexString())
+        .map((r) => ({ year: r.year, money: r.gdp }))
+        .sort((a, b) => a.year - b.year)
+    : [];
 
   if (!world) {
     return (
@@ -187,7 +198,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
             </div>
           )}
           <MetricsCard myNation={myNation} />
-          <WorldEventsCard nations={nationList} year={world.year} status={status} />
+          <WorldEventsCard events={events} />
           <GdpHistoryCard history={moneyHistory} />
         </div>
       </div>
@@ -316,24 +327,6 @@ function formatGdpShort(g: number): string {
 /* ---------- money history hook ---------- */
 
 interface MoneyPoint { year: number; money: number; }
-
-function useGdpHistory(year: number, gdp: number | undefined): MoneyPoint[] {
-  const [history, setHistory] = useState<MoneyPoint[]>([]);
-  const lastYearRef = useRef<number>(-1);
-
-  useEffect(() => {
-    if (gdp === undefined) return;
-    if (year !== lastYearRef.current) {
-      lastYearRef.current = year;
-      setHistory((prev) => {
-        const next = [...prev, { year, money: gdp }];
-        return next.length > 200 ? next.slice(-200) : next;
-      });
-    }
-  }, [year, gdp]);
-
-  return history;
-}
 
 function Sparkline({ history, width, height, stroke = '#3742fa' }: {
   history: MoneyPoint[];
@@ -1166,19 +1159,57 @@ function ProgressBar({ value, accent }: { value: number; accent: string }) {
   );
 }
 
-function WorldEventsCard({ nations, year, status }: {
-  nations: readonly NationData[]; year: number; status: string;
-}) {
+function WorldEventsCard({ events }: { events: readonly WorldEventData[] }) {
+  // Tick once per second so relative times update on screen.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const recent = [...events].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 8);
+
   return (
-    <div className="card">
-      <div className="card-title">World Events</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#8b96b0' }}>
-        <div>Year {year.toFixed(2)} · {status}</div>
-        <div>{nations.length} nation{nations.length === 1 ? '' : 's'} in play</div>
-        <div className="card-coming">Live event feed comes in a future round.</div>
+    <div className="card" style={{ maxHeight: 220, overflow: 'hidden' }}>
+      <div className="card-title">World Events ({events.length})</div>
+      {recent.length === 0 ? (
+        <div className="card-empty" style={{ padding: '12px 0', fontSize: 12 }}>
+          Nothing's happened yet. Claim, start, trade…
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', minHeight: 0 }}>
+          {recent.map((e) => (
+            <EventRow key={e.id.toString()} event={e} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EventRow({ event }: { event: WorldEventData }) {
+  const flag = event.actorName === 'System' ? '⚙' : flagFor(event.actorName);
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0' }}>
+      <span style={{ fontSize: 14, lineHeight: 1.2, flex: '0 0 auto' }}>{flag}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: '#e5eaf2', lineHeight: 1.3 }}>{event.text}</div>
+        <div style={{ fontSize: 9, color: '#5a6580', letterSpacing: 0.04 }}>
+          Year {event.year.toFixed(2)} · {relativeTime(event.createdAt)}
+        </div>
       </div>
     </div>
   );
+}
+
+function relativeTime(ts: Timestamp): string {
+  const eventMs = Number(ts.microsSinceUnixEpoch / 1000n);
+  const diff = Date.now() - eventMs;
+  if (diff < 5_000) return 'just now';
+  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
 const modalInputStyle: React.CSSProperties = {

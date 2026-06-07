@@ -46,15 +46,31 @@ import StartRunReducer from "./start_run_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import GdpHistoryRow from "./gdp_history_table";
 import NationRow from "./nation_table";
 import TradeOfferRow from "./trade_offer_table";
 import TrustRow from "./trust_table";
 import WorldRow from "./world_table";
+import WorldEventRow from "./world_event_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  gdpHistory: __table({
+    name: 'gdp_history',
+    indexes: [
+      { accessor: 'id', name: 'gdp_history_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner', name: 'gdp_history_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'gdp_history_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, GdpHistoryRow),
   nation: __table({
     name: 'nation',
     indexes: [
@@ -109,6 +125,17 @@ const tablesSchema = __schema({
       { name: 'world_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, WorldRow),
+  worldEvent: __table({
+    name: 'world_event',
+    indexes: [
+      { accessor: 'id', name: 'world_event_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'world_event_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, WorldEventRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
