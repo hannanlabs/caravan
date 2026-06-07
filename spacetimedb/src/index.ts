@@ -240,6 +240,14 @@ export const claimNation = spacetimedb.reducer(
     if (ctx.db.nation.owner.find(ctx.sender)) {
       throw new Error('already claimed a nation');
     }
+    // If a seat with this name already exists (a bot seed), take it over.
+    const existing = [...ctx.db.nation.iter()].find((n) => n.name === name);
+    if (existing) {
+      ctx.db.nation.owner.delete(existing.owner);
+      const taken = { ...existing, owner: ctx.sender };
+      ctx.db.nation.insert({ ...taken, gdp: computeGdp(taken) });
+      return;
+    }
     const fresh = {
       owner: ctx.sender,
       name,
