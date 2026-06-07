@@ -43,9 +43,11 @@ export function WorldMap({ myNation, nations, trustOut }: WorldMapProps) {
   return (
     <div style={{ width: '100%', position: 'relative' }}>
       <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 130 }}
-        style={{ width: '100%', height: 'auto', background: '#0a0e1a' }}
+        projection="geoEqualEarth"
+        projectionConfig={{ scale: 145 }}
+        width={820}
+        height={360}
+        style={{ width: '100%', height: 'auto', background: '#0a0e1a', display: 'block' }}
       >
         <Geographies geography={geoUrl}>
           {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>

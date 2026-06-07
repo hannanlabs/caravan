@@ -14,8 +14,8 @@ body {
   color: #e5eaf2;
   background: #0a0e1a;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 a {
@@ -38,43 +38,45 @@ select {
 /* ---------- dashboard layout ---------- */
 
 .dash {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 12px;
-  padding: 12px;
+  gap: 8px;
+  padding: 8px;
   background: #0a0e1a;
+  overflow: hidden;
 }
 
 .dash-header {
   display: grid;
   grid-template-columns: 2fr 2fr 1.5fr;
-  gap: 12px;
+  gap: 8px;
 }
 
 .dash-grid {
   display: grid;
-  grid-template-columns: 280px 1fr 360px;
-  gap: 12px;
+  grid-template-columns: 240px 1fr 300px;
+  gap: 8px;
   min-height: 0;
 }
 
 .dash-col {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
+  overflow-y: auto;
 }
 
 .dash-footer {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 6px 12px;
   background: #131826;
   border: 1px solid #1f2940;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 11px;
   color: #8b96b0;
 }
 
@@ -83,11 +85,11 @@ select {
 .card {
   background: #131826;
   border: 1px solid #1f2940;
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 8px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -137,15 +139,15 @@ select {
 }
 
 .country-flag-big {
-  width: 60px;
-  height: 60px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
   background: #1a2138;
   border: 1px solid #2a3550;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 38px;
+  font-size: 28px;
   line-height: 1;
 }
 
@@ -162,9 +164,9 @@ select {
 }
 
 .nation-row-flag-emoji {
-  width: 24px;
-  height: 24px;
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  font-size: 16px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -172,11 +174,11 @@ select {
 }
 
 .country-name {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .country-sub {
@@ -221,7 +223,7 @@ select {
 }
 
 .stat-value {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -237,30 +239,30 @@ select {
 /* ---------- gdp card ---------- */
 
 .gdp-headline {
-  font-size: 36px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
 }
 
 .gdp-unit {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 500;
   color: #8b96b0;
-  margin-left: 6px;
+  margin-left: 4px;
 }
 
 .gdp-delta {
   color: #2ed573;
-  font-size: 13px;
-  margin-left: 6px;
+  font-size: 11px;
+  margin-left: 4px;
 }
 
 .gdp-substats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 8px;
-  padding-top: 12px;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
   border-top: 1px solid #1f2940;
 }
 
@@ -269,7 +271,7 @@ select {
 .actions-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .action-btn {
@@ -303,15 +305,15 @@ select {
 .action-btn-big {
   background: #1a2138;
   border: 1px solid #2a3550;
-  border-radius: 10px;
-  padding: 16px 8px;
+  border-radius: 8px;
+  padding: 8px 4px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   color: #e5eaf2;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   transition: all 120ms ease;
 }
@@ -332,7 +334,7 @@ select {
 .action-btn-big.taxes { background: linear-gradient(180deg, #5a4a00, #3a3200); border-color: #cfaf4f; }
 
 .action-icon-big {
-  font-size: 26px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -346,11 +348,11 @@ select {
 
 .nation-row {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 22px 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
 }
 
 .nation-row.me {
@@ -365,7 +367,7 @@ select {
 }
 
 .nation-row-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -373,12 +375,12 @@ select {
 }
 
 .nation-row-meta {
-  font-size: 11px;
+  font-size: 10px;
   color: #8b96b0;
 }
 
 .nation-row-trust {
-  font-size: 11px;
+  font-size: 10px;
   color: #8b96b0;
   font-variant-numeric: tabular-nums;
 }
@@ -406,9 +408,9 @@ select {
 }
 
 .metric-value {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
-  min-width: 36px;
+  min-width: 28px;
   text-align: right;
 }
 
