@@ -19,6 +19,7 @@ import {
   computeVolatility,
   volatilityMultiplier,
   eventActive,
+  priceCycle,
   computeTargetPrice,
   smoothPrice,
   clampPrice,
@@ -760,21 +761,23 @@ function settleYear(ctx: Ctx) {
     const m = ctx.db.commodityMarket.commodity.find(c);
     if (!m) continue;
     const def = COMMODITIES[c];
-    let stocks = 0;
+    // Supply is the annual FLOW (baseline + production), not accumulated inventory,
+    // so prices track supply/demand around the base instead of collapsing to the floor.
     let prod = 0;
-    for (const row of ctx.db.stockpile.iter()) if (row.commodity === c) stocks += Number(row.amount);
     for (const row of ctx.db.production.iter()) if (row.commodity === c) prod += Number(row.perYear);
     const warDemand = c === 'oil' ? oilWarDemand : c === 'steel' ? steelWarDemand : 0;
-    const globalSupply = def.baseSupply + stocks + prod;
+    const globalSupply = def.baseSupply + prod;
     const globalDemand = def.baseDemand + nations.length * consumptionFor(c) + m.recentBuyVolume + warDemand;
     const scarcity = computeScarcity(globalSupply, globalDemand);
     const volatility = computeVolatility(recentPrices(ctx, c));
+    const cycle = priceCycle(newYear, COMMODITY_KEYS.indexOf(c));
     const target = computeTargetPrice(
       def.basePrice,
       supplyDemandMultiplier(globalSupply, globalDemand, m.recentBuyVolume, m.recentSellVolume),
       scarcityMultiplier(scarcity),
       m.eventMultiplier,
-      volatilityMultiplier(volatility)
+      volatilityMultiplier(volatility),
+      cycle
     );
     const next = clampPrice(smoothPrice(m.currentPrice, target), def.basePrice, eventActive(m.crisisUntilYear, newYear));
     const change = next - m.currentPrice;

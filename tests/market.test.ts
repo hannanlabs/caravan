@@ -23,6 +23,8 @@ import {
   taxHarvest,
   warSeverity,
   warAttrition,
+  priceCycle,
+  CYCLE_BAND,
   CRISIS_MAX_FACTOR,
   MAX_FACTOR,
   MIN_FACTOR,
@@ -188,6 +190,34 @@ describe('gdp', () => {
     const baseline = computeGdpValue(stats, 0, 0);
     expect(computeGdpValue(stats, 10_000, 0)).toBeGreaterThan(baseline);
     expect(computeGdpValue(stats, 0, 500)).toBeGreaterThan(baseline);
+  });
+});
+
+describe('price cycle', () => {
+  it('oscillates over time (not monotonic)', () => {
+    const vals = [0, 1, 2, 3, 4, 5, 6].map((y) => priceCycle(y, 0));
+    const ups = vals.slice(1).some((v, i) => v > vals[i]!);
+    const downs = vals.slice(1).some((v, i) => v < vals[i]!);
+    expect(ups && downs).toBe(true);
+  });
+
+  it('stays within the amplitude band around 1', () => {
+    for (let y = 0; y < 40; y += 0.5) {
+      const v = priceCycle(y, 3);
+      expect(v).toBeGreaterThanOrEqual(1 - CYCLE_BAND - 1e-9);
+      expect(v).toBeLessThanOrEqual(1 + CYCLE_BAND + 1e-9);
+    }
+  });
+
+  it('is deterministic and phase-shifted per commodity', () => {
+    expect(priceCycle(3, 2)).toBe(priceCycle(3, 2));
+    expect(priceCycle(3, 0)).not.toBe(priceCycle(3, 4));
+  });
+
+  it('feeds the target price multiplicatively', () => {
+    const lo = computeTargetPrice(10, 1, 1, 1, 1, 0.9);
+    const hi = computeTargetPrice(10, 1, 1, 1, 1, 1.1);
+    expect(hi).toBeGreaterThan(lo);
   });
 });
 

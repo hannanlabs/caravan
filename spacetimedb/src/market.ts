@@ -21,7 +21,7 @@ export const COMMODITY_KEYS: CommodityKey[] = ['oil', 'energy', 'grain', 'steel'
 export const MIN_FACTOR = 0.25;        // price floor = base * MIN_FACTOR
 export const MAX_FACTOR = 4;           // normal price cap = base * MAX_FACTOR
 export const CRISIS_MAX_FACTOR = 8;    // crisis price cap = base * CRISIS_MAX_FACTOR
-export const ADJUST_SPEED = 0.15;      // smoothing toward target per year
+export const ADJUST_SPEED = 0.35;      // smoothing toward target per year (high enough that the cycle shows)
 export const VOLUME_DECAY = 0.7;       // recent buy/sell volume decay per year
 export const ELASTICITY = 0.6;         // price sensitivity to demand/supply ratio
 export const IMPACT_K = 0.04;          // per-trade immediate price-impact coefficient
@@ -46,12 +46,12 @@ export interface CommodityDef {
 }
 
 export const COMMODITIES: Record<CommodityKey, CommodityDef> = {
-  oil:         { key: 'oil',         label: 'Oil',         basePrice: 12, baseSupply: 4000, baseDemand: 4200, consumptionPerNation: 4, shortageStat: null },
-  energy:      { key: 'energy',      label: 'Energy',      basePrice: 10, baseSupply: 4500, baseDemand: 4600, consumptionPerNation: 6, shortageStat: 'technology' },
-  grain:       { key: 'grain',       label: 'Grain',       basePrice: 5,  baseSupply: 6000, baseDemand: 6000, consumptionPerNation: 10, shortageStat: 'health' },
-  steel:       { key: 'steel',       label: 'Steel',       basePrice: 9,  baseSupply: 3500, baseDemand: 3600, consumptionPerNation: 4, shortageStat: null },
-  medicine:    { key: 'medicine',    label: 'Medicine',    basePrice: 16, baseSupply: 2000, baseDemand: 2100, consumptionPerNation: 2, shortageStat: 'health' },
-  electronics: { key: 'electronics', label: 'Electronics', basePrice: 20, baseSupply: 1800, baseDemand: 1900, consumptionPerNation: 1, shortageStat: 'technology' },
+  oil:         { key: 'oil',         label: 'Oil',         basePrice: 5, baseSupply: 4000, baseDemand: 4200, consumptionPerNation: 4, shortageStat: null },
+  energy:      { key: 'energy',      label: 'Energy',      basePrice: 4, baseSupply: 4500, baseDemand: 4600, consumptionPerNation: 6, shortageStat: 'technology' },
+  grain:       { key: 'grain',       label: 'Grain',       basePrice: 2, baseSupply: 6000, baseDemand: 6000, consumptionPerNation: 10, shortageStat: 'health' },
+  steel:       { key: 'steel',       label: 'Steel',       basePrice: 3, baseSupply: 3500, baseDemand: 3600, consumptionPerNation: 4, shortageStat: null },
+  medicine:    { key: 'medicine',    label: 'Medicine',    basePrice: 6, baseSupply: 2000, baseDemand: 2100, consumptionPerNation: 2, shortageStat: 'health' },
+  electronics: { key: 'electronics', label: 'Electronics', basePrice: 8, baseSupply: 1800, baseDemand: 1900, consumptionPerNation: 1, shortageStat: 'technology' },
 };
 
 export function commodityDef(key: CommodityKey): CommodityDef {
@@ -190,8 +190,23 @@ export function eventActive(crisisUntilYear: number, year: number): boolean {
   return crisisUntilYear > year;
 }
 
-export function computeTargetPrice(base: number, sdMult: number, scarcityMult: number, eventMult: number, volMult: number): number {
-  return base * sdMult * scarcityMult * eventMult * volMult;
+// Deterministic natural-looking oscillation: two out-of-phase sinusoids per
+// commodity (distinct phase by index) so commodities don't move in lockstep.
+// Stays within [1 - CYCLE_BAND, 1 + CYCLE_BAND]. No RNG — fully reproducible.
+export const CYCLE_AMP_1 = 0.2;
+export const CYCLE_AMP_2 = 0.09;
+export const CYCLE_BAND = CYCLE_AMP_1 + CYCLE_AMP_2;
+export const CYCLE_FREQ = 0.8;
+
+export function priceCycle(year: number, phaseIndex: number): number {
+  const phase = phaseIndex * 1.1;
+  return 1
+    + CYCLE_AMP_1 * Math.sin(year * CYCLE_FREQ + phase)
+    + CYCLE_AMP_2 * Math.cos(year * CYCLE_FREQ * 1.7 + phase * 0.6);
+}
+
+export function computeTargetPrice(base: number, sdMult: number, scarcityMult: number, eventMult: number, volMult: number, cycleMult = 1): number {
+  return base * sdMult * scarcityMult * eventMult * volMult * cycleMult;
 }
 
 export function smoothPrice(current: number, target: number, speed = ADJUST_SPEED): number {
