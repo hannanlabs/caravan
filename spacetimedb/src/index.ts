@@ -6,6 +6,7 @@ import {
   type InferSchema,
   type ReducerCtx,
 } from 'spacetimedb/server';
+import { Identity } from 'spacetimedb';
 
 const WorldStatus = t.enum('WorldStatus', {
   lobby: t.unit(),
@@ -163,12 +164,48 @@ function advanceTime(ctx: Ctx) {
   ctx.db.world.id.update({ ...w, year: after, status });
 }
 
+/* ---------- demo seeds ---------- */
+
+interface SeedNation {
+  hex: string;
+  name: string;
+  money: bigint;
+  goods: bigint;
+  energy: bigint;
+  education: number;
+  taxRate: number;
+}
+
+const SEED_NATIONS: SeedNation[] = [
+  { hex: 'bb01000000000000000000000000000000000000000000000000000000000001',
+    name: 'Empire',    money: 5000n, goods: 500n, energy: 500n, education: 0.80, taxRate: 0.30 },
+  { hex: 'bb02000000000000000000000000000000000000000000000000000000000002',
+    name: 'Pacifica',  money: 2000n, goods: 300n, energy: 200n, education: 0.55, taxRate: 0.20 },
+  { hex: 'bb03000000000000000000000000000000000000000000000000000000000003',
+    name: 'Atlantis',  money:  800n, goods: 200n, energy: 800n, education: 0.30, taxRate: 0.15 },
+  { hex: 'bb04000000000000000000000000000000000000000000000000000000000004',
+    name: 'Northland', money: 1500n, goods: 100n, energy: 100n, education: 0.65, taxRate: 0.40 },
+  { hex: 'bb05000000000000000000000000000000000000000000000000000000000005',
+    name: 'Sahara',    money:  600n, goods: 400n, energy: 300n, education: 0.20, taxRate: 0.10 },
+];
+
 export const init = spacetimedb.init((ctx) => {
   ctx.db.world.insert({
     id: 0,
     year: 0,
     status: { tag: 'lobby' },
   });
+  for (const s of SEED_NATIONS) {
+    ctx.db.nation.insert({
+      owner: Identity.fromString(s.hex),
+      name: s.name,
+      money: s.money,
+      goods: s.goods,
+      energy: s.energy,
+      education: s.education,
+      taxRate: s.taxRate,
+    });
+  }
 });
 
 export const onConnect = spacetimedb.clientConnected((_ctx) => {});
