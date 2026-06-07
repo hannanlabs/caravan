@@ -36,6 +36,8 @@ import {
 // Import all reducer arg schemas
 import ClaimNationReducer from "./claim_nation_reducer";
 import InvestEducationReducer from "./invest_education_reducer";
+import ProposeTradeReducer from "./propose_trade_reducer";
+import RespondTradeReducer from "./respond_trade_reducer";
 import SetTaxReducer from "./set_tax_reducer";
 import StartRunReducer from "./start_run_reducer";
 
@@ -43,6 +45,8 @@ import StartRunReducer from "./start_run_reducer";
 
 // Import all table schema definitions
 import NationRow from "./nation_table";
+import TradeOfferRow from "./trade_offer_table";
+import TrustRow from "./trust_table";
 import WorldRow from "./world_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -60,6 +64,38 @@ const tablesSchema = __schema({
       { name: 'nation_owner_key', constraint: 'unique', columns: ['owner'] },
     ],
   }, NationRow),
+  tradeOffer: __table({
+    name: 'trade_offer',
+    indexes: [
+      { accessor: 'fromOwner', name: 'trade_offer_from_owner_idx_btree', algorithm: 'btree', columns: [
+        'fromOwner',
+      ] },
+      { accessor: 'id', name: 'trade_offer_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'toOwner', name: 'trade_offer_to_owner_idx_btree', algorithm: 'btree', columns: [
+        'toOwner',
+      ] },
+    ],
+    constraints: [
+      { name: 'trade_offer_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TradeOfferRow),
+  trust: __table({
+    name: 'trust',
+    indexes: [
+      { accessor: 'by_pair', name: 'trust_from_owner_to_owner_idx_btree', algorithm: 'btree', columns: [
+        'fromOwner',
+        'toOwner',
+      ] },
+      { accessor: 'id', name: 'trust_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'trust_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TrustRow),
   world: __table({
     name: 'world',
     indexes: [
@@ -77,6 +113,8 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("claim_nation", ClaimNationReducer),
   __reducerSchema("invest_education", InvestEducationReducer),
+  __reducerSchema("propose_trade", ProposeTradeReducer),
+  __reducerSchema("respond_trade", RespondTradeReducer),
   __reducerSchema("set_tax", SetTaxReducer),
   __reducerSchema("start_run", StartRunReducer),
 );
