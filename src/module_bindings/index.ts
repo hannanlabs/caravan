@@ -37,6 +37,7 @@ import {
 import ClaimNationReducer from "./claim_nation_reducer";
 import InvestEducationReducer from "./invest_education_reducer";
 import ProposeTradeReducer from "./propose_trade_reducer";
+import ResetGameReducer from "./reset_game_reducer";
 import RespondTradeReducer from "./respond_trade_reducer";
 import SetTaxReducer from "./set_tax_reducer";
 import StartRunReducer from "./start_run_reducer";
@@ -114,6 +115,7 @@ const reducersSchema = __reducers(
   __reducerSchema("claim_nation", ClaimNationReducer),
   __reducerSchema("invest_education", InvestEducationReducer),
   __reducerSchema("propose_trade", ProposeTradeReducer),
+  __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("respond_trade", RespondTradeReducer),
   __reducerSchema("set_tax", SetTaxReducer),
   __reducerSchema("start_run", StartRunReducer),

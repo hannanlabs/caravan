@@ -136,6 +136,41 @@ select {
   font-size: 11px;
 }
 
+.country-flag-big {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  background: #1a2138;
+  border: 1px solid #2a3550;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  line-height: 1;
+}
+
+.flag-display {
+  width: 100%;
+  height: 100px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2a3550, #1a2138);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  line-height: 1;
+}
+
+.nation-row-flag-emoji {
+  width: 24px;
+  height: 24px;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .country-name {
   font-size: 22px;
   font-weight: 700;
@@ -263,6 +298,42 @@ select {
 
 .action-icon {
   font-size: 18px;
+}
+
+.action-btn-big {
+  background: #1a2138;
+  border: 1px solid #2a3550;
+  border-radius: 10px;
+  padding: 16px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #e5eaf2;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 120ms ease;
+}
+
+.action-btn-big:hover:not(:disabled) {
+  background: #232c47;
+  transform: translateY(-1px);
+}
+
+.action-btn-big:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.action-btn-big.trade { background: linear-gradient(180deg, #2a2050, #1a1840); border-color: #5a4faf; }
+.action-btn-big.education { background: linear-gradient(180deg, #1a3050, #102040); border-color: #4f7fcf; }
+.action-btn-big.healthcare { background: linear-gradient(180deg, #501a30, #401020); border-color: #cf4f7f; }
+.action-btn-big.taxes { background: linear-gradient(180deg, #5a4a00, #3a3200); border-color: #cfaf4f; }
+
+.action-icon-big {
+  font-size: 26px;
+  line-height: 1;
 }
 
 /* ---------- nation list (left col) ---------- */

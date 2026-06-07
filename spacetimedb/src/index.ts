@@ -38,6 +38,7 @@ const nation = table(
     energy: t.u64(),
     education: t.f32(),
     taxRate: t.f32(),
+    gdp: t.f64(),
   }
 );
 
@@ -146,12 +147,24 @@ function bumpTrust(ctx: Ctx, from: { toHexString(): string } & any, to: { toHexS
   }
 }
 
+function computeGdp(n: {
+  money: bigint; goods: bigint; energy: bigint; education: number; taxRate: number;
+}): number {
+  const base = 1000;
+  const humanCapital = 1 + n.education;
+  const taxDrag = 1 - n.taxRate * 0.5;
+  const industry = Number(n.goods + n.energy) * 5;
+  const liquidity = Number(n.money) * 0.1;
+  return base * humanCapital * taxDrag + industry + liquidity;
+}
+
 function tickAll(ctx: Ctx) {
   for (const n of [...ctx.db.nation.iter()]) {
     const growth = BASE_PRODUCTION * (1 + n.education) * (1 - n.taxRate);
     const resourceBonus = (n.goods + n.energy) / 10n;
     const newMoney = n.money + BigInt(Math.floor(growth)) + resourceBonus;
-    ctx.db.nation.owner.update({ ...n, money: newMoney });
+    const updated = { ...n, money: newMoney };
+    ctx.db.nation.owner.update({ ...updated, gdp: computeGdp(updated) });
   }
 }
 
@@ -178,15 +191,17 @@ interface SeedNation {
 
 const SEED_NATIONS: SeedNation[] = [
   { hex: 'bb01000000000000000000000000000000000000000000000000000000000001',
-    name: 'Empire',    money: 5000n, goods: 500n, energy: 500n, education: 0.80, taxRate: 0.30 },
+    name: 'USA',            money: 23000n, goods: 800n, energy: 700n, education: 0.85, taxRate: 0.27 },
   { hex: 'bb02000000000000000000000000000000000000000000000000000000000002',
-    name: 'Pacifica',  money: 2000n, goods: 300n, energy: 200n, education: 0.55, taxRate: 0.20 },
+    name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30 },
   { hex: 'bb03000000000000000000000000000000000000000000000000000000000003',
-    name: 'Atlantis',  money:  800n, goods: 200n, energy: 800n, education: 0.30, taxRate: 0.15 },
+    name: 'Japan',          money:  5000n, goods: 400n, energy: 300n, education: 0.90, taxRate: 0.32 },
   { hex: 'bb04000000000000000000000000000000000000000000000000000000000004',
-    name: 'Northland', money: 1500n, goods: 100n, energy: 100n, education: 0.65, taxRate: 0.40 },
+    name: 'United Kingdom', money:  3300n, goods: 250n, energy: 200n, education: 0.85, taxRate: 0.35 },
   { hex: 'bb05000000000000000000000000000000000000000000000000000000000005',
-    name: 'Sahara',    money:  600n, goods: 400n, energy: 300n, education: 0.20, taxRate: 0.10 },
+    name: 'India',          money:  3700n, goods: 900n, energy: 600n, education: 0.45, taxRate: 0.18 },
+  { hex: 'bb06000000000000000000000000000000000000000000000000000000000006',
+    name: 'Brazil',         money:  2100n, goods: 600n, energy: 500n, education: 0.50, taxRate: 0.22 },
 ];
 
 export const init = spacetimedb.init((ctx) => {
@@ -196,7 +211,7 @@ export const init = spacetimedb.init((ctx) => {
     status: { tag: 'lobby' },
   });
   for (const s of SEED_NATIONS) {
-    ctx.db.nation.insert({
+    const row = {
       owner: Identity.fromString(s.hex),
       name: s.name,
       money: s.money,
@@ -204,7 +219,8 @@ export const init = spacetimedb.init((ctx) => {
       energy: s.energy,
       education: s.education,
       taxRate: s.taxRate,
-    });
+    };
+    ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
   }
 });
 
@@ -219,7 +235,7 @@ export const claimNation = spacetimedb.reducer(
     if (ctx.db.nation.owner.find(ctx.sender)) {
       throw new Error('already claimed a nation');
     }
-    ctx.db.nation.insert({
+    const fresh = {
       owner: ctx.sender,
       name,
       money: STARTING_MONEY,
@@ -227,7 +243,8 @@ export const claimNation = spacetimedb.reducer(
       energy: STARTING_ENERGY,
       education: STARTING_EDUCATION,
       taxRate: STARTING_TAX,
-    });
+    };
+    ctx.db.nation.insert({ ...fresh, gdp: computeGdp(fresh) });
   }
 );
 
@@ -264,6 +281,34 @@ export const setTax = spacetimedb.reducer(
     advanceTime(ctx);
   }
 );
+
+// Reset world back to a fresh lobby with the original seed bots.
+// Open to any caller — easier iteration during the human-only phase.
+export const resetGame = spacetimedb.reducer((ctx) => {
+  for (const n of [...ctx.db.nation.iter()]) {
+    ctx.db.nation.owner.delete(n.owner);
+  }
+  for (const o of [...ctx.db.tradeOffer.iter()]) {
+    ctx.db.tradeOffer.id.delete(o.id);
+  }
+  for (const r of [...ctx.db.trust.iter()]) {
+    ctx.db.trust.id.delete(r.id);
+  }
+  for (const s of SEED_NATIONS) {
+    const row = {
+      owner: Identity.fromString(s.hex),
+      name: s.name,
+      money: s.money,
+      goods: s.goods,
+      energy: s.energy,
+      education: s.education,
+      taxRate: s.taxRate,
+    };
+    ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
+  }
+  const w = getWorld(ctx);
+  ctx.db.world.id.update({ ...w, year: 0, status: { tag: 'lobby' } });
+});
 
 export const proposeTrade = spacetimedb.reducer(
   {

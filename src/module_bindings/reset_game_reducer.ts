@@ -10,13 +10,4 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  owner: __t.identity().primaryKey(),
-  name: __t.string(),
-  money: __t.u64(),
-  goods: __t.u64(),
-  energy: __t.u64(),
-  education: __t.f32(),
-  taxRate: __t.f32().name("tax_rate"),
-  gdp: __t.f64(),
-});
+export default {};

@@ -18,6 +18,7 @@ export const Nation = __t.object("Nation", {
   energy: __t.u64(),
   education: __t.f32(),
   taxRate: __t.f32(),
+  gdp: __t.f64(),
 });
 export type Nation = __Infer<typeof Nation>;
 
