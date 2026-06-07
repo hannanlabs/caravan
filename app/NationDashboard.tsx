@@ -11,8 +11,15 @@ import GdpHistoryRow from '../src/module_bindings/gdp_history_table';
 import type { Infer, Timestamp } from 'spacetimedb';
 import type { InitialSnapshot, WorldData, NationData } from '../lib/spacetimedb-server';
 import { flagFor, metaFor } from '../lib/countries';
+import {
+  formatGdp, formatGdpShort, formatMoneyShort, relativeTime,
+} from '../lib/format';
 import { WorldMap } from './WorldMap';
-import { Modal } from './Modal';
+import { TradeModal } from '../components/TradeModal';
+import { EducationModal } from '../components/EducationModal';
+import { HealthcareModal } from '../components/HealthcareModal';
+import { TaxesModal } from '../components/TaxesModal';
+import { StatsModal } from '../components/StatsModal';
 
 type ActionModal = 'trade' | 'education' | 'healthcare' | 'taxes' | 'stats' | null;
 
@@ -251,7 +258,6 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         rank={myRank}
         worldShare={worldShare}
         nationCount={nationList.length}
-        history={moneyHistory}
       />
     </main>
   );
@@ -294,37 +300,7 @@ function DebugStrip({
   );
 }
 
-/* ---------- formatting helpers ---------- */
-
-function formatMoney(b: bigint): { value: string; unit: string } {
-  // Treat raw u64 as millions of USD.
-  // 1_000 → $1B, 1_000_000 → $1T, 671 → $671M
-  const n = Number(b);
-  if (n >= 1_000_000) return { value: (n / 1_000_000).toFixed(2), unit: 'Trillion' };
-  if (n >= 1_000) return { value: (n / 1_000).toFixed(2), unit: 'Billion' };
-  return { value: n.toString(), unit: 'Million' };
-}
-
-function formatMoneyShort(b: bigint): string {
-  const n = Number(b);
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}T`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}B`;
-  return `$${n}M`;
-}
-
-function formatGdp(g: number): { value: string; unit: string } {
-  if (g >= 1_000_000) return { value: (g / 1_000_000).toFixed(2), unit: 'Trillion' };
-  if (g >= 1_000) return { value: (g / 1_000).toFixed(2), unit: 'Billion' };
-  return { value: g.toFixed(0), unit: 'Million' };
-}
-
-function formatGdpShort(g: number): string {
-  if (g >= 1_000_000) return `$${(g / 1_000_000).toFixed(1)}T`;
-  if (g >= 1_000) return `$${(g / 1_000).toFixed(1)}B`;
-  return `$${g.toFixed(0)}M`;
-}
-
-/* ---------- money history hook ---------- */
+/* ---------- formatting + money history hook ---------- */
 
 interface MoneyPoint { year: number; money: number; }
 
@@ -385,16 +361,26 @@ function Header(props: HeaderProps) {
   return (
     <div className="dash-header">
       <div className="card">
-        <div className="country-header">
-          <div className="country-flag-big">{meta?.flag ?? '🏳'}</div>
-          <div>
-            <div className="country-name">
-              {myNation?.name ?? 'Spectator'}{' '}
-              <span className={`online-dot ${isActive ? 'on' : 'off'}`} />{' '}
-              <span className="country-sub">{isActive ? 'Online' : 'Offline'}</span>
+        <div className="country-header" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div className="country-flag-big">{meta?.flag ?? '🏳'}</div>
+            <div>
+              <div className="country-name">
+                {myNation?.name ?? 'Spectator'}{' '}
+                <span className={`online-dot ${isActive ? 'on' : 'off'}`} />{' '}
+                <span className="country-sub">{isActive ? 'Online' : 'Offline'}</span>
+              </div>
+              <div className="country-sub">{meta?.govType ?? 'Caravan'}</div>
             </div>
-            <div className="country-sub">{meta?.govType ?? 'Caravan'}</div>
           </div>
+          {myNation && (
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: '#8b96b0', letterSpacing: 0.08, textTransform: 'uppercase' }}>Cash</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#2ed573', lineHeight: 1.1 }}>
+                {formatMoneyShort(myNation.money)}
+              </div>
+            </div>
+          )}
         </div>
         <button
           onClick={onViewStats}
@@ -539,26 +525,6 @@ const pregameButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   width: '100%',
 };
-
-function rankSuffix(n: number): string {
-  if (n % 100 >= 11 && n % 100 <= 13) return 'th';
-  switch (n % 10) {
-    case 1: return 'st';
-    case 2: return 'nd';
-    case 3: return 'rd';
-    default: return 'th';
-  }
-}
-
-function Stat({ label, value, foot }: { label: string; value: string; foot: string }) {
-  return (
-    <div className="stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {foot && <div className="stat-foot neutral">{foot}</div>}
-    </div>
-  );
-}
 
 /* ---------- left column ---------- */
 
