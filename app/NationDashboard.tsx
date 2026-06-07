@@ -39,6 +39,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const claim = useReducer(reducers.claimNation);
   const start = useReducer(reducers.startRun);
   const invest = useReducer(reducers.investEducation);
+  const investHealth = useReducer(reducers.investHealthcare);
   const tax = useReducer(reducers.setTax);
   const propose = useReducer(reducers.proposeTrade);
   const respond = useReducer(reducers.respondTrade);
@@ -76,6 +77,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const [taxInput, setTaxInput] = useState<number>(10);
   const [openModal, setOpenModal] = useState<ActionModal>(null);
   const [investAmt, setInvestAmt] = useState<string>('100');
+  const [healthAmt, setHealthAmt] = useState<string>('100');
 
   useEffect(() => {
     if (myNation) setTaxInput(Math.round(myNation.taxRate * 100));
@@ -216,6 +218,11 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
       <HealthcareModal
         open={openModal === 'healthcare'}
         onClose={() => setOpenModal(null)}
+        myNation={myNation}
+        isActive={isActive}
+        healthAmt={healthAmt}
+        setHealthAmt={setHealthAmt}
+        onInvest={(amount) => investHealth({ amount })}
       />
       <TaxesModal
         open={openModal === 'taxes'}
@@ -994,32 +1001,82 @@ function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount, hi
       </div>
       <div className="gdp-substats">
         <Stat label="Cash" value={formatMoneyShort(myNation.money)} foot="liquid funds" />
+        <Stat label="Health" value={`${(myNation.health * 100).toFixed(1)}%`} foot="0–100" />
         <Stat label="Reputation" value="—" foot="future" />
-        <Stat label="Health" value="—" foot="future" />
       </div>
     </Modal>
   );
 }
 
 
-function HealthcareModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface HealthcareModalProps {
+  open: boolean;
+  onClose: () => void;
+  myNation?: NationData;
+  isActive: boolean;
+  healthAmt: string;
+  setHealthAmt: (s: string) => void;
+  onInvest: (amount: bigint) => void;
+}
+
+function HealthcareModal({ open, onClose, myNation, isActive, healthAmt, setHealthAmt, onInvest }: HealthcareModalProps) {
   if (!open) return null;
+  const presets = [10n, 100n, 500n, 1000n];
   return (
-    <Modal open={open} onClose={onClose} title="❤ Healthcare Reform" accent="#cf4f7f" width={460}>
-      <Section title="Coming soon">
-        <Empty>
-          Healthcare investment isn't wired to the simulation yet — we haven't added a
-          health index to the schema. Planned: each invested unit raises a `health` column,
-          which damps tax drag and boosts education growth rates.
-        </Empty>
-      </Section>
-      <Section title="What it would do">
-        <ul style={{ paddingLeft: 18, color: '#8b96b0', fontSize: 12, lineHeight: 1.6 }}>
-          <li>Add a <code>health</code> column to <code>nation</code> (f32, 0–1).</li>
-          <li>Per-year tick: health decays slowly; investment restores it.</li>
-          <li>Healthy population → higher GDP multiplier.</li>
-        </ul>
-      </Section>
+    <Modal open={open} onClose={onClose} title="❤ Invest in Healthcare" accent="#cf4f7f" width={460}>
+      {myNation ? (
+        <>
+          <Section title="Current">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 36, fontWeight: 700 }}>{(myNation.health * 100).toFixed(1)}%</div>
+              <ProgressBar value={myNation.health} accent="#cf4f7f" />
+            </div>
+            <div style={{ fontSize: 12, color: '#8b96b0' }}>
+              Cash on hand: {formatMoneyShort(myNation.money)} · health is a +50% GDP multiplier at 100%
+            </div>
+          </Section>
+          <Section title="Spend money to raise health (100 → +1.0%)">
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {presets.map((p) => (
+                <button
+                  key={p.toString()}
+                  onClick={() => setHealthAmt(p.toString())}
+                  disabled={!isActive}
+                  style={{
+                    ...secondaryButton,
+                    background: healthAmt === p.toString() ? '#cf4f7f' : '#1a2138',
+                    color: healthAmt === p.toString() ? '#0a0e1a' : '#e5eaf2',
+                  }}
+                >
+                  {p.toString()}
+                </button>
+              ))}
+            </div>
+            <input
+              type="number" min={1} value={healthAmt}
+              onChange={(e) => setHealthAmt(e.target.value)}
+              style={modalInputStyle}
+            />
+            <button
+              onClick={() => {
+                try {
+                  const amt = BigInt(healthAmt || '0');
+                  if (amt > 0n) {
+                    onInvest(amt);
+                    onClose();
+                  }
+                } catch {}
+              }}
+              disabled={!isActive || !healthAmt || BigInt(healthAmt || '0') <= 0n}
+              style={{ ...primaryButton, background: '#cf4f7f', color: '#fff', marginTop: 10 }}
+            >
+              Invest {healthAmt} (advances year by 0.25)
+            </button>
+          </Section>
+        </>
+      ) : (
+        <Empty>Claim a nation first.</Empty>
+      )}
     </Modal>
   );
 }
@@ -1189,16 +1246,17 @@ const offerRowStyle: React.CSSProperties = {
 
 function MetricsCard({ myNation }: { myNation?: NationData }) {
   const eduPct = myNation ? Math.round(myNation.education * 100) : 0;
+  const healthPct = myNation ? Math.round(myNation.health * 100) : 0;
   const taxPct = myNation ? Math.round(myNation.taxRate * 100) : 0;
 
   return (
     <div className="card">
       <div className="card-title">Other Metrics</div>
-      <MetricRow label="Military" value={null} note="Round 5+" />
-      <MetricRow label="Technology" value={null} note="Round 5+" />
+      <MetricRow label="Military" value={null} note="future" />
+      <MetricRow label="Technology" value={null} note="future" />
       <MetricRow label="Education" value={eduPct} note={`raw: ${myNation?.education.toFixed(3) ?? '—'}`} />
+      <MetricRow label="Health" value={healthPct} note={`raw: ${myNation?.health.toFixed(3) ?? '—'}`} />
       <MetricRow label="Tax Rate" value={taxPct} note={`raw: ${myNation?.taxRate.toFixed(3) ?? '—'}`} />
-      <MetricRow label="Diplomacy" value={null} note="Round 4" />
     </div>
   );
 }

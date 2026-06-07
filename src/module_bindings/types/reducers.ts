@@ -8,6 +8,7 @@ import { type Infer as __Infer } from "spacetimedb";
 // Import all reducer arg schemas
 import ClaimNationReducer from "../claim_nation_reducer";
 import InvestEducationReducer from "../invest_education_reducer";
+import InvestHealthcareReducer from "../invest_healthcare_reducer";
 import ProposeTradeReducer from "../propose_trade_reducer";
 import ResetGameReducer from "../reset_game_reducer";
 import RespondTradeReducer from "../respond_trade_reducer";
@@ -16,6 +17,7 @@ import StartRunReducer from "../start_run_reducer";
 
 export type ClaimNationParams = __Infer<typeof ClaimNationReducer>;
 export type InvestEducationParams = __Infer<typeof InvestEducationReducer>;
+export type InvestHealthcareParams = __Infer<typeof InvestHealthcareReducer>;
 export type ProposeTradeParams = __Infer<typeof ProposeTradeReducer>;
 export type ResetGameParams = __Infer<typeof ResetGameReducer>;
 export type RespondTradeParams = __Infer<typeof RespondTradeReducer>;

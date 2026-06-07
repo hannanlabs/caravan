@@ -38,6 +38,7 @@ const nation = table(
     energy: t.u64(),
     education: t.f32(),
     taxRate: t.f32(),
+    health: t.f32(),
     gdp: t.f64(),
   }
 );
@@ -80,6 +81,7 @@ const STARTING_GOODS = 100n;
 const STARTING_ENERGY = 100n;
 const STARTING_EDUCATION = 0.1;
 const STARTING_TAX = 0.1;
+const STARTING_HEALTH = 0.2;
 const TIME_STEP = 0.25;
 const GAME_END_YEAR = 100;
 const BASE_PRODUCTION = 50;
@@ -148,14 +150,15 @@ function bumpTrust(ctx: Ctx, from: { toHexString(): string } & any, to: { toHexS
 }
 
 function computeGdp(n: {
-  money: bigint; goods: bigint; energy: bigint; education: number; taxRate: number;
+  money: bigint; goods: bigint; energy: bigint; education: number; taxRate: number; health: number;
 }): number {
   const base = 1000;
   const humanCapital = 1 + n.education;
+  const healthFactor = 1 + n.health * 0.5;
   const taxDrag = 1 - n.taxRate * 0.5;
   const industry = Number(n.goods + n.energy) * 5;
   const liquidity = Number(n.money) * 0.1;
-  return base * humanCapital * taxDrag + industry + liquidity;
+  return base * humanCapital * healthFactor * taxDrag + industry + liquidity;
 }
 
 function tickAll(ctx: Ctx) {
@@ -187,21 +190,22 @@ interface SeedNation {
   energy: bigint;
   education: number;
   taxRate: number;
+  health: number;
 }
 
 const SEED_NATIONS: SeedNation[] = [
   { hex: 'bb01000000000000000000000000000000000000000000000000000000000001',
-    name: 'USA',            money: 23000n, goods: 800n, energy: 700n, education: 0.85, taxRate: 0.27 },
+    name: 'USA',            money: 23000n, goods: 800n, energy: 700n, education: 0.85, taxRate: 0.27, health: 0.80 },
   { hex: 'bb02000000000000000000000000000000000000000000000000000000000002',
-    name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30 },
+    name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30, health: 0.70 },
   { hex: 'bb03000000000000000000000000000000000000000000000000000000000003',
-    name: 'Japan',          money:  5000n, goods: 400n, energy: 300n, education: 0.90, taxRate: 0.32 },
+    name: 'Japan',          money:  5000n, goods: 400n, energy: 300n, education: 0.90, taxRate: 0.32, health: 0.95 },
   { hex: 'bb04000000000000000000000000000000000000000000000000000000000004',
-    name: 'United Kingdom', money:  3300n, goods: 250n, energy: 200n, education: 0.85, taxRate: 0.35 },
+    name: 'United Kingdom', money:  3300n, goods: 250n, energy: 200n, education: 0.85, taxRate: 0.35, health: 0.85 },
   { hex: 'bb05000000000000000000000000000000000000000000000000000000000005',
-    name: 'India',          money:  3700n, goods: 900n, energy: 600n, education: 0.45, taxRate: 0.18 },
+    name: 'India',          money:  3700n, goods: 900n, energy: 600n, education: 0.45, taxRate: 0.18, health: 0.55 },
   { hex: 'bb06000000000000000000000000000000000000000000000000000000000006',
-    name: 'Brazil',         money:  2100n, goods: 600n, energy: 500n, education: 0.50, taxRate: 0.22 },
+    name: 'Brazil',         money:  2100n, goods: 600n, energy: 500n, education: 0.50, taxRate: 0.22, health: 0.65 },
 ];
 
 export const init = spacetimedb.init((ctx) => {
@@ -219,6 +223,7 @@ export const init = spacetimedb.init((ctx) => {
       energy: s.energy,
       education: s.education,
       taxRate: s.taxRate,
+      health: s.health,
     };
     ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
   }
@@ -243,6 +248,7 @@ export const claimNation = spacetimedb.reducer(
       energy: STARTING_ENERGY,
       education: STARTING_EDUCATION,
       taxRate: STARTING_TAX,
+      health: STARTING_HEALTH,
     };
     ctx.db.nation.insert({ ...fresh, gdp: computeGdp(fresh) });
   }
@@ -267,6 +273,23 @@ export const investEducation = spacetimedb.reducer(
       ...n,
       money: n.money - amount,
       education: clamp01(n.education + educationGain),
+    });
+    advanceTime(ctx);
+  }
+);
+
+export const investHealthcare = spacetimedb.reducer(
+  { amount: t.u64() },
+  (ctx, { amount }) => {
+    requireRunning(ctx);
+    const n = requireMyNation(ctx);
+    if (amount === 0n) throw new Error('amount must be > 0');
+    if (n.money < amount) throw new Error('insufficient money');
+    const healthGain = Number(amount) * 0.0001;
+    ctx.db.nation.owner.update({
+      ...n,
+      money: n.money - amount,
+      health: clamp01(n.health + healthGain),
     });
     advanceTime(ctx);
   }
@@ -303,6 +326,7 @@ export const resetGame = spacetimedb.reducer((ctx) => {
       energy: s.energy,
       education: s.education,
       taxRate: s.taxRate,
+      health: s.health,
     };
     ctx.db.nation.insert({ ...row, gdp: computeGdp(row) });
   }
