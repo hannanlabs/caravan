@@ -13,6 +13,7 @@ const hanken = Hanken_Grotesk({
 export const metadata: Metadata = {
   title: 'Caravan',
   description: 'Year 0→100 multiplayer economic simulation on SpacetimeDB',
+  icons: { icon: '/caravan.webp' },
 };
 
 export default function RootLayout({

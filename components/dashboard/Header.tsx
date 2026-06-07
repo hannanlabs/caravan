@@ -1,6 +1,6 @@
 'use client';
 
-import { metaFor } from '../../lib/countries';
+import { metaFor, flagFor, allCountryNames } from '../../lib/countries';
 import { formatGdpShort, formatMoneyShort } from '../../lib/format';
 import type { NationData } from '../../lib/spacetimedb-server';
 import type { ActionModal } from './types';
@@ -97,21 +97,26 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
 function ActionsBody(props: HeaderProps) {
   const { isActive, myNation, status, nameInput, setNameInput, onClaim, onStart, onOpenModal, incomingCount } = props;
 
-  // Lobby, no nation yet → claim form.
+  // Lobby, no nation yet → claim form (pick a country from the list).
   if (!myNation && status === 'Lobby') {
+    const countries = allCountryNames().slice().sort((a, b) => a.localeCompare(b));
     return (
       <div className="pregame-panel">
-        <input
-          className="input"
-          type="text"
+        <select
+          className="select"
           value={nameInput}
           onChange={(e) => setNameInput(e.target.value)}
-          placeholder="Nation name (e.g. USA, China, Japan)"
-        />
+          aria-label="Choose a country to claim"
+        >
+          <option value="">Select a country…</option>
+          {countries.map((name) => (
+            <option key={name} value={name}>{flagFor(name)}  {name}</option>
+          ))}
+        </select>
         <button
           className="btn btn-primary btn-block"
-          disabled={!isActive || !nameInput.trim()}
-          onClick={() => { if (nameInput.trim()) { onClaim(nameInput.trim()); setNameInput(''); } }}
+          disabled={!isActive || !nameInput}
+          onClick={() => { if (nameInput) { onClaim(nameInput); setNameInput(''); } }}
         >
           Claim nation
         </button>

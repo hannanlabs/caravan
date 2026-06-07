@@ -26,6 +26,7 @@ import { GdpHistoryCard, type MoneyPoint } from '../components/dashboard/GdpHist
 import { Footer } from '../components/dashboard/Footer';
 import { DebugStrip } from '../components/dashboard/DebugStrip';
 import { IconGlobe } from '../components/icons';
+import { BrandMark } from '../components/BrandMark';
 import type { ActionModal } from '../components/dashboard/types';
 
 type TradeOfferData = Infer<typeof TradeOfferRow>;
@@ -121,7 +122,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
           />
         )}
         <div className="card card-pad" style={{ margin: 'auto', textAlign: 'center', maxWidth: 420, padding: 40 }}>
-          <div className="brand-mark" style={{ margin: '0 auto 14px', width: 40, height: 40, fontSize: 19 }}>C</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}><BrandMark size={44} /></div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>Connecting to SpacetimeDB…</div>
           <div style={{ color: 'var(--ink-3)', fontSize: 13, marginTop: 4 }}>Joining the live world.</div>
         </div>

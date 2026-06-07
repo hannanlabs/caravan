@@ -1,6 +1,7 @@
 'use client';
 
 import type { WorldData } from '../../lib/spacetimedb-server';
+import { BrandMark } from '../BrandMark';
 
 export const MAX_YEAR = 100;
 
@@ -23,7 +24,7 @@ export function TopBar({ world, status, nationCount, isActive }: TopBarProps) {
   return (
     <div className="topbar">
       <div className="brand">
-        <div className="brand-mark">C</div>
+        <BrandMark priority />
         <div>
           <div className="brand-name">Caravan</div>
           <div className="brand-sub">Geopolitical economy simulator</div>
