@@ -5,8 +5,6 @@ import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
 import { tables, reducers } from '../src/module_bindings';
 import type { Infer } from 'spacetimedb';
 import TradeOfferRow from '../src/module_bindings/trade_offer_table';
-import TrustRow from '../src/module_bindings/trust_table';
-import GdpHistoryRow from '../src/module_bindings/gdp_history_table';
 import type { InitialSnapshot, WorldData, NationData } from '../lib/spacetimedb-server';
 import { formatGdpShort } from '../lib/format';
 import { WorldMap } from './WorldMap';
@@ -19,6 +17,7 @@ import { TaxesModal } from '../components/TaxesModal';
 import { StatsModal } from '../components/StatsModal';
 
 // Dashboard layout components
+import { TopBar } from '../components/dashboard/TopBar';
 import { Header } from '../components/dashboard/Header';
 import { RelationshipCards } from '../components/dashboard/RelationshipCards';
 import { MetricsCard } from '../components/dashboard/MetricsCard';
@@ -26,6 +25,7 @@ import { WorldEventsCard } from '../components/dashboard/WorldEventsCard';
 import { GdpHistoryCard, type MoneyPoint } from '../components/dashboard/GdpHistoryCard';
 import { Footer } from '../components/dashboard/Footer';
 import { DebugStrip } from '../components/dashboard/DebugStrip';
+import { IconGlobe } from '../components/icons';
 import type { ActionModal } from '../components/dashboard/types';
 
 type TradeOfferData = Infer<typeof TradeOfferRow>;
@@ -90,8 +90,8 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const [nameInput, setNameInput] = useState('');
   const [taxInput, setTaxInput] = useState<number>(10);
   const [openModal, setOpenModal] = useState<ActionModal>(null);
-  const [investAmt, setInvestAmt] = useState<string>('100');
-  const [healthAmt, setHealthAmt] = useState<string>('100');
+  const [investAmt, setInvestAmt] = useState<number>(100);
+  const [healthAmt, setHealthAmt] = useState<number>(100);
 
   useEffect(() => {
     if (myNation) setTaxInput(Math.round(myNation.taxRate * 100));
@@ -107,7 +107,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
 
   if (!world) {
     return (
-      <main className="dash">
+      <main className="app">
         {debugOn && (
           <DebugStrip
             isActive={isActive}
@@ -120,15 +120,21 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
             trustCount={trustRows.length}
           />
         )}
-        <div className="pregame card">Connecting to SpacetimeDB…</div>
+        <div className="card card-pad" style={{ margin: 'auto', textAlign: 'center', maxWidth: 420, padding: 40 }}>
+          <div className="brand-mark" style={{ margin: '0 auto 14px', width: 40, height: 40, fontSize: 19 }}>C</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Connecting to SpacetimeDB…</div>
+          <div style={{ color: 'var(--ink-3)', fontSize: 13, marginTop: 4 }}>Joining the live world.</div>
+        </div>
       </main>
     );
   }
 
   const status = world.status.tag;
+  const leader = sortedByGdp[0];
+  const winner = status === 'Ended' ? leader : undefined;
 
   return (
-    <main className="dash">
+    <main className="app">
       {debugOn && (
         <DebugStrip
           isActive={isActive}
@@ -142,6 +148,18 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         />
       )}
 
+      <TopBar world={world} status={status} nationCount={nationList.length} isActive={isActive} />
+
+      {winner && (
+        <div className="winner">
+          <span className="trophy">🏆</span>
+          <span>
+            <strong>{winner.name}</strong> wins with GDP {formatGdpShort(winner.gdp)} ·{' '}
+            {winner.owner.toHexString() === myHex ? "that's you!" : 'hit Reset in the footer to play again.'}
+          </span>
+        </div>
+      )}
+
       <Header
         isActive={isActive}
         myNation={myNation}
@@ -152,59 +170,33 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         onStart={() => start()}
         onOpenModal={setOpenModal}
         onViewStats={() => setOpenModal('stats')}
+        incomingCount={incomingOffers.length}
       />
 
-      {status === 'Ended' && sortedByGdp[0] && (
-        <div style={{
-          background: 'linear-gradient(90deg, #2ed57340, #2ed57310)',
-          border: '1px solid #2ed573',
-          borderRadius: 8,
-          padding: '12px 16px',
-          textAlign: 'center',
-          fontSize: 16,
-        }}>
-          🏆 <strong>{sortedByGdp[0].name}</strong> wins with GDP {formatGdpShort(sortedByGdp[0].gdp)} ·
-          {' '}{sortedByGdp[0].owner.toHexString() === identity?.toHexString() ? 'That\'s you!' : 'Hit Reset in the footer to play again.'}
-        </div>
-      )}
-
-      <div className="dash-grid">
-        <div className="dash-col">
+      <div className="grid">
+        <div className="col">
           <RelationshipCards
             nations={sortedByGdp}
             identity={identity}
             trustOut={trustOut}
-            winnerHex={status === 'Ended' && sortedByGdp[0] ? sortedByGdp[0].owner.toHexString() : undefined}
+            winnerHex={winner ? winner.owner.toHexString() : undefined}
           />
         </div>
 
-        <div className="dash-col">
-          <div className="card">
-            <div className="card-title">World Map</div>
+        <div className="col">
+          <div className="card card-pad map-card">
+            <div className="card-title" style={{ marginBottom: 12 }}>
+              <span className="ct-label">World map</span>
+              <span style={{ color: 'var(--ink-4)', display: 'inline-flex' }}><IconGlobe size={16} /></span>
+            </div>
             <WorldMap myNation={myNation} nations={nationList} trustOut={trustOut} />
           </div>
         </div>
 
-        <div className="dash-col">
-          {incomingOffers.length > 0 && (
-            <div className="card" style={{ borderColor: '#2ed573' }}>
-              <div className="card-title" style={{ color: '#2ed573' }}>
-                Incoming Trades ({incomingOffers.length})
-              </div>
-              <button
-                onClick={() => setOpenModal('trade')}
-                style={{
-                  background: '#2ed573', color: '#0a0e1a', border: 'none',
-                  borderRadius: 6, padding: '8px 12px', fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                Review & respond
-              </button>
-            </div>
-          )}
+        <div className="col">
           <MetricsCard myNation={myNation} />
-          <WorldEventsCard events={events} />
           <GdpHistoryCard history={moneyHistory} />
+          <WorldEventsCard events={events} />
         </div>
       </div>
 
@@ -212,6 +204,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         world={world}
         status={status}
         nationCount={nationList.length}
+        leader={leader ? { name: leader.name, gdpShort: formatGdpShort(leader.gdp) } : undefined}
         onReset={() => reset()}
         isActive={isActive}
       />

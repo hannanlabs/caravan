@@ -1,64 +1,71 @@
 'use client';
 
+import { formatGdpShort } from '../../lib/format';
+import { IconArrowUp, IconArrowDown } from '../icons';
+
 export interface MoneyPoint { year: number; money: number; }
 
 export function GdpHistoryCard({ history }: { history: MoneyPoint[] }) {
   if (history.length < 2) {
     return (
-      <div className="card">
-        <div className="card-title">Visualization · GDP over time</div>
-        <div className="card-empty" style={{ padding: '12px 0', fontSize: 12 }}>
-          Make a move to start tracking history.
+      <div className="card card-pad">
+        <div className="card-title" style={{ marginBottom: 6 }}>
+          <span className="ct-label">GDP over time</span>
         </div>
+        <div className="empty">Make a move to start tracking history.</div>
       </div>
     );
   }
-  const first = history[0]!;
-  const last = history[history.length - 1]!;
-  const delta = last.money - first.money;
-  const deltaPct = first.money > 0 ? (delta / first.money) * 100 : 0;
+
+  const first = history[0]!.money;
+  const last = history[history.length - 1]!.money;
+  const pct = first > 0 ? ((last - first) / first) * 100 : 0;
+  const up = pct >= 0;
+
+  const ys = history.map((p) => p.money);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
+  const range = max - min || 1;
+  const W = 300, H = 88;
+  const pts = history.map((p, i) => [
+    (i / (history.length - 1)) * W,
+    H - ((p.money - min) / range) * (H - 10) - 5,
+  ] as const);
+  const line = pts.map((p) => p.join(',')).join(' ');
+  const area = `0,${H} ${line} ${W},${H}`;
+  const lastPt = pts[pts.length - 1]!;
+
   return (
-    <div className="card">
-      <div className="card-title">Visualization · GDP over time</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8b96b0' }}>
-        <span>Year {first.year.toFixed(2)} → {last.year.toFixed(2)}</span>
-        <span style={{ color: delta >= 0 ? '#2ed573' : '#ff4757' }}>
-          {delta >= 0 ? '+' : ''}{deltaPct.toFixed(1)}%
+    <div className="card card-pad">
+      <div className="card-title" style={{ marginBottom: 6 }}>
+        <span className="ct-label">GDP over time</span>
+      </div>
+      <div className="chart-head">
+        <span className="chart-val">{formatGdpShort(last)}</span>
+        <span className={`chip ${up ? 'chip-pos' : 'chip-neg'}`}>
+          {up ? <IconArrowUp size={13} /> : <IconArrowDown size={13} />}
+          {up ? '+' : ''}{pct.toFixed(1)}%
         </span>
       </div>
-      <div style={{ width: '100%' }}>
-        <ResponsiveSparkline history={history} height={70} />
-      </div>
+      <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="gfill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.16" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#gfill)" />
+        <polyline
+          points={line}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle cx={lastPt[0]} cy={lastPt[1]} r={3.5} fill="#fff" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      </svg>
     </div>
-  );
-}
-
-function ResponsiveSparkline({ history, height, stroke = '#3742fa' }: {
-  history: MoneyPoint[];
-  height: number;
-  stroke?: string;
-}) {
-  if (history.length < 2) return null;
-  const ys = history.map((p) => p.money);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const range = maxY - minY || 1;
-  const viewW = 1000;
-  const stepX = viewW / (history.length - 1);
-  const points = history.map((p, i) => {
-    const x = i * stepX;
-    const y = height - ((p.money - minY) / range) * (height - 4) - 2;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return (
-    <svg
-      width="100%"
-      height={height}
-      viewBox={`0 0 ${viewW} ${height}`}
-      preserveAspectRatio="none"
-      style={{ display: 'block' }}
-    >
-      <polyline fill="none" stroke={stroke} strokeWidth={2.5} vectorEffect="non-scaling-stroke" points={points.join(' ')} />
-    </svg>
   );
 }

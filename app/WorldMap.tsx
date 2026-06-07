@@ -7,12 +7,13 @@ import type { NationData } from '../lib/spacetimedb-server';
 const geoUrl =
   'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
-const COLOR_SELF = '#3742fa';
-const COLOR_ALLY = '#2ed573';
-const COLOR_RIVAL = '#ff4757';
-const COLOR_NEUTRAL = '#ffc107';
-const COLOR_BOT = '#7a8aa8';
-const COLOR_UNCLAIMED = '#1f2940';
+// Light-fintech map palette: light land, colour reserved for meaningful relations.
+const COLOR_SELF = '#3257e5';      // accent
+const COLOR_ALLY = '#11814b';      // pos
+const COLOR_RIVAL = '#cf3b2a';     // neg
+const COLOR_NEUTRAL = '#9a6b00';   // warn
+const COLOR_BOT = '#aab2c0';       // ink-4 — other nations
+const COLOR_UNCLAIMED = '#dde3ec'; // light land
 
 interface WorldMapProps {
   myNation?: NationData;
@@ -41,38 +42,41 @@ export function WorldMap({ myNation, nations, trustOut }: WorldMapProps) {
   }
 
   return (
-    <div style={{ width: '100%', position: 'relative' }}>
-      <ComposableMap
-        projection="geoEqualEarth"
-        projectionConfig={{ scale: 145 }}
-        width={820}
-        height={360}
-        style={{ width: '100%', height: 'auto', background: '#0a0e1a', display: 'block' }}
-      >
-        <Geographies geography={geoUrl}>
-          {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
-            geographies.map((geo) => {
-              const fill = colorForGeo(geo.properties.name);
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={fill}
-                  stroke="#0a0e1a"
-                  strokeWidth={0.4}
-                  style={{
-                    default: { outline: 'none' },
-                    hover: { fill: '#ffffff20', outline: 'none', cursor: 'pointer' },
-                    pressed: { outline: 'none' },
-                  }}
-                />
-              );
-            })
-          }
-        </Geographies>
-      </ComposableMap>
+    <>
+      <div className="map-wrap">
+        <div className="map-grid-bg" />
+        <ComposableMap
+          projection="geoEqualEarth"
+          projectionConfig={{ scale: 165 }}
+          width={820}
+          height={360}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: 'transparent', display: 'block' }}
+        >
+          <Geographies geography={geoUrl}>
+            {({ geographies }: { geographies: Array<{ rsmKey: string; properties: { name: string } }> }) =>
+              geographies.map((geo) => {
+                const fill = colorForGeo(geo.properties.name);
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={fill}
+                    stroke="#ffffff"
+                    strokeWidth={0.5}
+                    style={{
+                      default: { outline: 'none' },
+                      hover: { fill: 'rgba(50,87,229,0.18)', outline: 'none', cursor: 'pointer' },
+                      pressed: { outline: 'none' },
+                    }}
+                  />
+                );
+              })
+            }
+          </Geographies>
+        </ComposableMap>
+      </div>
       <Legend />
-    </div>
+    </>
   );
 }
 
@@ -86,18 +90,10 @@ function Legend() {
     [COLOR_UNCLAIMED, 'Unclaimed'],
   ];
   return (
-    <div style={{
-      display: 'flex',
-      gap: 16,
-      justifyContent: 'center',
-      paddingTop: 8,
-      fontSize: 11,
-      color: '#8b96b0',
-      flexWrap: 'wrap',
-    }}>
+    <div className="map-legend">
       {items.map(([color, label]) => (
-        <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 10, height: 10, background: color, borderRadius: 2, display: 'inline-block' }} />
+        <span key={label}>
+          <i style={{ background: color }} />
           {label}
         </span>
       ))}

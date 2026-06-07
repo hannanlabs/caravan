@@ -16,21 +16,18 @@ export function WorldEventsCard({ events }: { events: readonly WorldEventData[] 
     return () => clearInterval(t);
   }, []);
 
-  const recent = [...events].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 8);
+  const recent = [...events].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 6);
 
   return (
-    <div className="card" style={{ maxHeight: 220, overflow: 'hidden' }}>
-      <div className="card-title">World Events ({events.length})</div>
+    <div className="card card-pad">
+      <div className="card-title" style={{ marginBottom: 10 }}>
+        <span className="ct-label">World events</span>
+        <span className="rh-count">{events.length}</span>
+      </div>
       {recent.length === 0 ? (
-        <div className="card-empty" style={{ padding: '12px 0', fontSize: 12 }}>
-          Nothing's happened yet. Claim, start, trade…
-        </div>
+        <div className="empty">Nothing&rsquo;s happened yet. Claim, start, trade…</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', minHeight: 0 }}>
-          {recent.map((e) => (
-            <EventRow key={e.id.toString()} event={e} />
-          ))}
-        </div>
+        recent.map((e) => <EventRow key={e.id.toString()} event={e} />)
       )}
     </div>
   );
@@ -39,13 +36,11 @@ export function WorldEventsCard({ events }: { events: readonly WorldEventData[] 
 function EventRow({ event }: { event: WorldEventData }) {
   const flag = event.actorName === 'System' ? '⚙' : flagFor(event.actorName);
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0' }}>
-      <span style={{ fontSize: 14, lineHeight: 1.2, flex: '0 0 auto' }}>{flag}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: '#e5eaf2', lineHeight: 1.3 }}>{event.text}</div>
-        <div style={{ fontSize: 9, color: '#5a6580', letterSpacing: 0.04 }}>
-          Year {event.year.toFixed(2)} · {relativeTime(event.createdAt)}
-        </div>
+    <div className="event">
+      <div className="event-ic">{flag}</div>
+      <div className="event-body">
+        <div className="event-text">{event.text}</div>
+        <div className="event-meta">Year {event.year.toFixed(2)} · {relativeTime(event.createdAt)}</div>
       </div>
     </div>
   );

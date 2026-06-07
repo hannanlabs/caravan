@@ -1,108 +1,134 @@
 'use client';
 
-import type React from 'react';
+import type { ReactNode } from 'react';
+import { IconMinus, IconPlus } from './icons';
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A labelled section inside a modal body. `aside` sits at the top-right (e.g. a chip). */
+export function Block({ label, aside, children }: { label?: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.08, color: '#8b96b0', textTransform: 'uppercase' }}>
-        {title}
-      </div>
+    <div className="block">
+      {(label || aside) && (
+        <div className="block-head">
+          {label ? <span className="eyebrow">{label}</span> : <span />}
+          {aside}
+        </div>
+      )}
       {children}
     </div>
   );
 }
 
-export function Empty({ children }: { children: React.ReactNode }) {
-  return <div style={{ color: '#5a6580', fontStyle: 'italic', fontSize: 13, padding: '4px 0' }}>{children}</div>;
+/** Custom range slider with a painted fill behind the native input. */
+export function Range({
+  value, max, min = 0, onChange, disabled,
+}: {
+  value: number;
+  max: number;
+  min?: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
+  const pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
+  return (
+    <div className="range">
+      <div className="track" />
+      <div className="fill" style={{ width: `${pct}%` }} />
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Adjust value"
+      />
+    </div>
+  );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** Number stepper: minus / value / plus. */
+export function Stepper({
+  value, onChange, step = 10, min = 0, disabled,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  step?: number;
+  min?: number;
+  disabled?: boolean;
+}) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 11, color: '#8b96b0', textTransform: 'uppercase', letterSpacing: 0.05 }}>{label}</span>
+    <div className="stepper">
+      <button
+        type="button"
+        className="step-btn"
+        disabled={disabled || value <= min}
+        onClick={() => onChange(Math.max(min, value - step))}
+        aria-label="Decrease"
+      >
+        <IconMinus size={16} />
+      </button>
+      <input
+        type="number"
+        className="tnum"
+        min={min}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Math.max(min, Number(e.target.value) || 0))}
+      />
+      <button
+        type="button"
+        className="step-btn"
+        disabled={disabled}
+        onClick={() => onChange(value + step)}
+        aria-label="Increase"
+      >
+        <IconPlus size={16} />
+      </button>
+    </div>
+  );
+}
+
+/** Segmented preset buttons. */
+export function Segmented<T extends string | number>({
+  options, value, onChange, disabled, render,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  render?: (v: T) => ReactNode;
+}) {
+  return (
+    <div className="segmented">
+      {options.map((opt) => (
+        <button
+          key={String(opt)}
+          type="button"
+          className="seg"
+          aria-pressed={value === opt}
+          disabled={disabled}
+          onClick={() => onChange(opt)}
+        >
+          {render ? render(opt) : String(opt)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="field">
+      <label>{label}</label>
       {children}
-    </label>
-  );
-}
-
-export function ProgressBar({ value, accent }: { value: number; accent: string }) {
-  return (
-    <div style={{ flex: 1, height: 8, background: '#1f2940', borderRadius: 4, marginLeft: 12, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${Math.min(100, value * 100)}%`, background: accent }} />
     </div>
   );
 }
 
-export function Stat({ label, value, foot }: { label: string; value: string; foot: string }) {
-  return (
-    <div className="stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {foot && <div className="stat-foot neutral">{foot}</div>}
-    </div>
-  );
+export function Empty({ children }: { children: ReactNode }) {
+  return <div className="empty">{children}</div>;
 }
 
-export const modalInputStyle: React.CSSProperties = {
-  background: '#0a0e1a',
-  border: '1px solid #2a3550',
-  borderRadius: 6,
-  padding: '8px 10px',
-  color: '#e5eaf2',
-  width: '100%',
-  fontSize: 13,
-};
-
-export const primaryButton: React.CSSProperties = {
-  background: '#2ed573',
-  border: 'none',
-  borderRadius: 6,
-  padding: '10px 14px',
-  color: '#0a0e1a',
-  fontWeight: 700,
-  cursor: 'pointer',
-  width: '100%',
-};
-
-export const secondaryButton: React.CSSProperties = {
-  background: '#1a2138',
-  border: '1px solid #2a3550',
-  borderRadius: 6,
-  padding: '6px 12px',
-  color: '#e5eaf2',
-  fontSize: 12,
-  cursor: 'pointer',
-};
-
-export const approveButton: React.CSSProperties = {
-  background: '#2ed573',
-  border: 'none',
-  borderRadius: 6,
-  padding: '6px 14px',
-  color: '#0a0e1a',
-  fontWeight: 700,
-  cursor: 'pointer',
-  fontSize: 12,
-};
-
-export const rejectButton: React.CSSProperties = {
-  background: '#ff4757',
-  border: 'none',
-  borderRadius: 6,
-  padding: '6px 14px',
-  color: '#fff',
-  fontWeight: 700,
-  cursor: 'pointer',
-  fontSize: 12,
-};
-
-export const offerRowStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  padding: 10,
-  background: '#0a0e1a',
-  border: '1px solid #1f2940',
-  borderRadius: 6,
-};
+export function Chip({ tone = 'neutral', children }: { tone?: 'pos' | 'neg' | 'neutral' | 'accent'; children: ReactNode }) {
+  return <span className={`chip chip-${tone}`}>{children}</span>;
+}

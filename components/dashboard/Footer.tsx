@@ -2,19 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import type { WorldData } from '../../lib/spacetimedb-server';
+import { MAX_YEAR } from './TopBar';
+import { IconReset } from '../icons';
 
 interface FooterProps {
   world: WorldData;
   status: string;
   nationCount: number;
+  leader?: { name: string; gdpShort: string };
   onReset: () => void;
   isActive: boolean;
 }
 
-export function Footer({ world, status, nationCount, onReset, isActive }: FooterProps) {
-  const [now, setNow] = useState(() => new Date());
+export function Footer({ world, status, nationCount, leader, onReset, isActive }: FooterProps) {
+  const [now, setNow] = useState<string>('--:--:--');
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    const tick = () => setNow(new Date().toISOString().substring(11, 19));
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -24,29 +29,26 @@ export function Footer({ world, status, nationCount, onReset, isActive }: Footer
     }
   };
 
+  let pillClass = 'pill-off';
+  if (isActive) {
+    if (status === 'Running') pillClass = 'pill-live';
+    else if (status === 'Ended') pillClass = 'pill-ended';
+    else pillClass = 'pill-lobby';
+  }
+
   return (
-    <div className="dash-footer">
-      <span>UTC {now.toISOString().substring(11, 19)}</span>
-      <span>Game Year {world.year.toFixed(2)} / 100</span>
-      <span className={`status-pill ${status.toLowerCase()}`}>{status}</span>
-      <span className="breaking">LIVE</span>
+    <div className="footer">
+      <span className="f-item">UTC {now}</span>
+      <span className="f-sep" />
+      <span className="f-item">Year {world.year.toFixed(2)} / {MAX_YEAR}</span>
+      <span className={`pill ${pillClass}`} style={{ height: 22 }}><span className="dot" />{status}</span>
+      <span className="footer-spacer" />
       <span className="ticker">
-        {nationCount} nation{nationCount === 1 ? '' : 's'} playing · Caravan
+        {nationCount} nation{nationCount === 1 ? '' : 's'} playing
+        {leader ? ` · ${leader.name} leads at ${leader.gdpShort}` : ''}
       </span>
-      <button
-        onClick={handleReset}
-        disabled={!isActive}
-        style={{
-          background: 'transparent',
-          border: '1px solid #2a3550',
-          borderRadius: 4,
-          padding: '4px 10px',
-          color: '#ff4757',
-          fontSize: 11,
-          cursor: 'pointer',
-        }}
-      >
-        Reset
+      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--neg)' }} disabled={!isActive} onClick={handleReset}>
+        <IconReset size={15} />Reset
       </button>
     </div>
   );

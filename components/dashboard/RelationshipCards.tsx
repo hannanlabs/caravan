@@ -3,6 +3,7 @@
 import { flagFor } from '../../lib/countries';
 import { formatGdpShort } from '../../lib/format';
 import type { NationData } from '../../lib/spacetimedb-server';
+import { IconUsers } from '../icons';
 
 interface RelationshipCardsProps {
   nations: readonly NationData[];
@@ -10,6 +11,8 @@ interface RelationshipCardsProps {
   trustOut: Map<string, number>;
   winnerHex?: string;
 }
+
+type Tone = 'ally' | 'neutral' | 'rival';
 
 export function RelationshipCards({ nations, identity, trustOut, winnerHex }: RelationshipCardsProps) {
   const myHex = identity?.toHexString();
@@ -27,52 +30,53 @@ export function RelationshipCards({ nations, identity, trustOut, winnerHex }: Re
   }
 
   return (
-    <>
-      <RelCard title="Allies" tone="ally" nations={allies} trustOut={trustOut} winnerHex={winnerHex} />
-      <RelCard title="Rivals" tone="rival" nations={rivals} trustOut={trustOut} winnerHex={winnerHex} />
-      <RelCard title="Neutral" tone="neutral" nations={neutral} trustOut={trustOut} winnerHex={winnerHex} />
-    </>
+    <div className="card card-pad">
+      <div className="card-title" style={{ marginBottom: 12 }}>
+        <span className="ct-label">Relations</span>
+        <span style={{ color: 'var(--ink-4)', display: 'inline-flex' }}><IconUsers size={16} /></span>
+      </div>
+      <RelGroup tone="ally" label="Allies" nations={allies} trustOut={trustOut} winnerHex={winnerHex} />
+      <RelGroup tone="neutral" label="Neutral" nations={neutral} trustOut={trustOut} winnerHex={winnerHex} />
+      <RelGroup tone="rival" label="Rivals" nations={rivals} trustOut={trustOut} winnerHex={winnerHex} />
+      {others.length === 0 && (
+        <div className="empty" style={{ marginTop: 4 }}>No other nations yet.</div>
+      )}
+    </div>
   );
 }
 
-function RelCard({
-  title, tone, nations, trustOut, winnerHex,
+function RelGroup({
+  tone, label, nations, trustOut, winnerHex,
 }: {
-  title: string;
-  tone: 'ally' | 'rival' | 'neutral';
+  tone: Tone;
+  label: string;
   nations: NationData[];
   trustOut: Map<string, number>;
   winnerHex?: string;
 }) {
-  const toneColor = tone === 'ally' ? '#2ed573' : tone === 'rival' ? '#ff4757' : '#ffc107';
+  if (nations.length === 0) return null;
   return (
-    <div className="card" style={{ minHeight: 0 }}>
-      <div className="card-title" style={{ color: toneColor }}>
-        {title} ({nations.length})
+    <div className="rel-group">
+      <div className={`rel-head rel-${tone}`}>
+        <span className="rel-dot" />
+        <span className="rh-label">{label}</span>
+        <span className="rh-count">{nations.length}</span>
       </div>
-      {nations.length === 0 ? (
-        <div className="card-empty" style={{ padding: '6px 0', fontSize: 11 }}>None</div>
-      ) : (
-        <div className="nation-list" style={{ maxHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
-          {nations.map((n) => {
-            const hex = n.owner.toHexString();
-            const t = trustOut.get(hex);
-            const winner = winnerHex === hex;
-            return (
-              <div key={hex} className="nation-row" style={winner ? { background: '#2ed57320' } : undefined}>
-                <div className="nation-row-flag-emoji">{flagFor(n.name)}</div>
-                <div>
-                  <div className="nation-row-name">{winner && '🏆 '}{n.name}</div>
-                  <div className="nation-row-meta">GDP {formatGdpShort(n.gdp)}</div>
-                </div>
-                <div className="nation-row-trust" style={{ color: toneColor }}>
-                  {t === undefined ? '—' : `Trust: ${t}`}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {nations.map((n) => {
+        const hex = n.owner.toHexString();
+        const t = trustOut.get(hex);
+        const winner = winnerHex === hex;
+        return (
+          <div className="nrow" key={hex}>
+            <span className="nrow-flag">{flagFor(n.name)}</span>
+            <div style={{ minWidth: 0 }}>
+              <div className="nrow-name">{winner && '🏆 '}{n.name}</div>
+              <div className="nrow-gdp">GDP {formatGdpShort(n.gdp)}</div>
+            </div>
+            <div className={`nrow-trust rel-${tone}`}>{t === undefined ? '—' : t}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

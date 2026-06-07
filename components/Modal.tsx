@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { IconClose } from './icons';
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
+  icon: ReactNode;
   title: string;
-  accent?: string;
+  sub?: string;
   width?: number;
-  children: React.ReactNode;
+  children: ReactNode;
+  /** Optional footer content (note text + actions). */
+  foot?: ReactNode;
 }
 
-export function Modal({ open, onClose, title, accent = '#3742fa', width = 520, children }: ModalProps) {
+export function Modal({ open, onClose, icon, title, sub, width = 540, children, foot }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -24,57 +28,20 @@ export function Modal({ open, onClose, title, accent = '#3742fa', width = 520, c
   if (!open) return null;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(5, 8, 16, 0.75)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingTop: 80,
-        zIndex: 100,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#131826',
-          border: '1px solid #1f2940',
-          borderTop: `3px solid ${accent}`,
-          borderRadius: 12,
-          padding: 24,
-          width,
-          maxWidth: 'calc(100vw - 32px)',
-          maxHeight: 'calc(100vh - 120px)',
-          overflowY: 'auto',
-          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.4)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, letterSpacing: 0.02 }}>{title}</h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: '1px solid #2a3550',
-              borderRadius: 6,
-              padding: '4px 10px',
-              color: '#8b96b0',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            Close (Esc)
+    <div className="scrim" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div className="mh-icon">{icon}</div>
+          <div className="mh-text">
+            <h2>{title}</h2>
+            {sub && <div className="mh-sub">{sub}</div>}
+          </div>
+          <button className="icon-btn modal-close" onClick={onClose} aria-label="Close">
+            <IconClose size={18} />
           </button>
         </div>
-        {children}
+        <div className="modal-body">{children}</div>
+        {foot && <div className="modal-foot">{foot}</div>}
       </div>
     </div>
   );

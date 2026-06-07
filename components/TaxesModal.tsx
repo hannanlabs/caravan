@@ -1,7 +1,9 @@
 'use client';
 
 import { Modal } from './Modal';
-import { Empty, ProgressBar, Section, primaryButton } from './shared';
+import { Block, Empty, Range, Chip } from './shared';
+import { IconBank } from './icons';
+import { formatGdpShort } from '../lib/format';
 import type { NationData } from '../lib/spacetimedb-server';
 
 interface TaxesModalProps {
@@ -16,41 +18,60 @@ interface TaxesModalProps {
 
 export function TaxesModal({ open, onClose, myNation, isActive, taxInput, setTaxInput, onSetTax }: TaxesModalProps) {
   if (!open) return null;
+
+  if (!myNation) {
+    return (
+      <Modal open={open} onClose={onClose} icon={<IconBank />} title="Set tax rate" width={480}>
+        <Empty>Claim a nation first to set a tax rate.</Empty>
+      </Modal>
+    );
+  }
+
+  const drag = (taxInput * 0.5).toFixed(1);
+
   return (
-    <Modal open={open} onClose={onClose} title="🏛 Set Tax Rate" accent="#cfaf4f" width={460}>
-      {myNation ? (
+    <Modal
+      open={open}
+      onClose={onClose}
+      icon={<IconBank />}
+      title="Set tax rate"
+      sub="Higher revenue, slower growth"
+      width={480}
+      foot={
         <>
-          <Section title="Current rate">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 36, fontWeight: 700 }}>{taxInput}%</div>
-              <ProgressBar value={taxInput / 100} accent="#cfaf4f" />
-            </div>
-            <div style={{ fontSize: 12, color: '#8b96b0', marginTop: 6 }}>
-              GDP drag at this rate: <strong>{(taxInput * 0.5).toFixed(1)}%</strong>
-            </div>
-          </Section>
-          <Section title="Adjust">
-            <input
-              type="range" min={0} max={100} value={taxInput}
-              onChange={(e) => setTaxInput(Number(e.target.value))}
-              style={{ width: '100%' }}
-              disabled={!isActive}
-            />
-            <button
-              onClick={() => {
-                onSetTax(taxInput / 100);
-                onClose();
-              }}
-              disabled={!isActive}
-              style={{ ...primaryButton, marginTop: 10 }}
-            >
-              Set tax to {taxInput}% (advances year by 0.25)
-            </button>
-          </Section>
+          <span className="foot-note">Confirming advances the year by 0.25.</span>
+          <button
+            className="btn btn-primary"
+            disabled={!isActive}
+            onClick={() => { onSetTax(taxInput / 100); onClose(); }}
+          >
+            Apply {taxInput}% rate
+          </button>
         </>
-      ) : (
-        <Empty>Claim a nation first.</Empty>
-      )}
+      }
+    >
+      <Block label="Current rate" aside={<Chip tone="neutral">Drag {drag}% on GDP</Chip>}>
+        <div className="gauge-row">
+          <div className="gauge-num">{taxInput}<span style={{ fontSize: 26, color: 'var(--ink-3)' }}>%</span></div>
+        </div>
+      </Block>
+
+      <Block label="Adjust">
+        <Range value={taxInput} max={100} onChange={setTaxInput} disabled={!isActive} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>
+          <span>0% · max growth</span><span>100% · max revenue</span>
+        </div>
+      </Block>
+
+      <div className="projection">
+        <div style={{ flex: 1 }}>
+          <div className="pj-label">Projected annual revenue</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+            <span className="pj-to tnum">{formatGdpShort(myNation.gdp * taxInput / 100)}</span>
+            <span style={{ fontSize: 12, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>collected / yr</span>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }

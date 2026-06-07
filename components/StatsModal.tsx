@@ -1,9 +1,10 @@
 'use client';
 
 import { Modal } from './Modal';
-import { Empty, Stat } from './shared';
-import { flagFor } from '../lib/countries';
-import { formatGdp, formatMoneyShort, rankSuffix } from '../lib/format';
+import { Block, Empty } from './shared';
+import { IconChart } from './icons';
+import { flagFor, metaFor } from '../lib/countries';
+import { formatGdp, formatGdpShort, formatMoneyShort, rankSuffix } from '../lib/format';
 import type { NationData } from '../lib/spacetimedb-server';
 
 interface StatsModalProps {
@@ -17,34 +18,74 @@ interface StatsModalProps {
 
 export function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount }: StatsModalProps) {
   if (!open) return null;
+
   if (!myNation) {
     return (
-      <Modal open={open} onClose={onClose} title="📊 Live Stats" width={560}>
-        <Empty>Claim a nation first to see live stats.</Empty>
+      <Modal open={open} onClose={onClose} icon={<IconChart />} title="Live statistics" width={580}>
+        <Empty>Claim a nation first to see live statistics.</Empty>
       </Modal>
     );
   }
+
   const gdp = formatGdp(myNation.gdp);
+  const meta = metaFor(myNation.name);
+
+  const cells: { label: string; value: string; foot: string }[] = [
+    { label: 'Cash reserves', value: formatMoneyShort(myNation.money), foot: 'Liquid funds' },
+    { label: 'Goods', value: myNation.goods.toString(), foot: 'Output / yr' },
+    { label: 'Energy', value: myNation.energy.toString(), foot: 'Output / yr' },
+    { label: 'Tax rate', value: `${Math.round(myNation.taxRate * 100)}%`, foot: 'Policy' },
+    { label: 'Education', value: `${(myNation.education * 100).toFixed(1)}%`, foot: 'Index' },
+    { label: 'Health', value: `${(myNation.health * 100).toFixed(1)}%`, foot: 'Index' },
+  ];
+
   return (
-    <Modal open={open} onClose={onClose} title={`${flagFor(myNation.name)} ${myNation.name}: Live Stats`} width={560}>
-      <div>
-        <span className="gdp-headline">${gdp.value}</span>
-        <span className="gdp-unit">{gdp.unit}</span>
-      </div>
-      <div className="gdp-substats">
-        <Stat label="Goods" value={myNation.goods.toString()} foot="raw units" />
-        <Stat label="Energy" value={myNation.energy.toString()} foot="raw units" />
-        <Stat label="Tax Rate" value={`${(myNation.taxRate * 100).toFixed(0)}%`} foot="" />
-      </div>
-      <div className="gdp-substats">
-        <Stat label="Rank" value={`${rank}${rankSuffix(rank)} / ${nationCount}`} foot="" />
-        <Stat label="World Share" value={`${worldShare.toFixed(1)}%`} foot="of total GDP" />
-        <Stat label="Education" value={`${(myNation.education * 100).toFixed(1)}%`} foot="0–100" />
-      </div>
-      <div className="gdp-substats">
-        <Stat label="Cash" value={formatMoneyShort(myNation.money)} foot="liquid funds" />
-        <Stat label="Health" value={`${(myNation.health * 100).toFixed(1)}%`} foot="0–100" />
-        <Stat label="Reputation" value="—" foot="future" />
+    <Modal
+      open={open}
+      onClose={onClose}
+      icon={<IconChart />}
+      title="Live statistics"
+      sub={`${flagFor(myNation.name)} ${myNation.name} · ${meta.govType}`}
+      width={580}
+    >
+      <Block label="Gross domestic product">
+        <div className="gauge-row">
+          <div className="display" style={{ fontSize: 50 }}>
+            ${gdp.value}
+            <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: 0, marginLeft: 8 }}>
+              {gdp.unit}
+            </span>
+          </div>
+        </div>
+      </Block>
+
+      <Block label="Global standing">
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
+          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'baseline', gap: 7, whiteSpace: 'nowrap' }}>
+            <span className="display" style={{ fontSize: 28 }}>{rank}{rankSuffix(rank)}</span>
+            <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>of {nationCount}</span>
+          </div>
+          <div style={{ width: 1, height: 30, background: 'var(--line-2)', flex: 'none' }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, whiteSpace: 'nowrap', gap: 12 }}>
+              <span style={{ color: 'var(--ink-3)' }}>World GDP share</span>
+              <span className="tnum" style={{ fontWeight: 700, fontSize: 14 }}>{worldShare.toFixed(1)}%</span>
+            </div>
+            <div className="bar"><i style={{ width: `${Math.min(100, worldShare)}%` }} /></div>
+          </div>
+        </div>
+      </Block>
+
+      <div style={{ borderRadius: 13, boxShadow: 'inset 0 0 0 1px var(--line-2)', overflow: 'hidden' }}>
+        <div className="statgrid">
+          {cells.map((c) => (
+            <div className="statcell" key={c.label}>
+              <div className="sc-label">{c.label}</div>
+              <div className="sc-value tnum">{c.value}</div>
+              <div className="sc-foot">{c.foot}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </Modal>
   );
