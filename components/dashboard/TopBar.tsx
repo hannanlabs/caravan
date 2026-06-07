@@ -23,14 +23,11 @@ export function TopBar({ world, status, nationCount, isActive }: TopBarProps) {
 
   return (
     <div className="topbar">
+      <span aria-hidden />
       <div className="brand">
-        <BrandMark priority />
-        <div>
-          <div className="brand-name">Caravan</div>
-          <div className="brand-sub">Geopolitical economy simulator</div>
-        </div>
+        <BrandMark priority size={38} />
+        <span className="brand-title">Caravan</span>
       </div>
-      <div className="topbar-spacer" />
       <div className="world-meta">
         <div className="wm-item">
           <span className="wm-label">Game year</span>
