@@ -8,8 +8,16 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
+import {
+  WorldStatus,
+} from "./types";
 
-export default {
-  name: __t.string(),
-};
+
+export default __t.row({
+  id: __t.u8().primaryKey(),
+  year: __t.f32(),
+  get status() {
+    return WorldStatus;
+  },
+});

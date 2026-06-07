@@ -8,9 +8,33 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
 
-export const Person = __t.object('Person', {
+export const Nation = __t.object("Nation", {
+  owner: __t.identity(),
   name: __t.string(),
+  money: __t.u64(),
+  goods: __t.u64(),
+  energy: __t.u64(),
+  education: __t.f32(),
+  taxRate: __t.f32(),
 });
-export type Person = __Infer<typeof Person>;
+export type Nation = __Infer<typeof Nation>;
+
+export const World = __t.object("World", {
+  id: __t.u8(),
+  year: __t.f32(),
+  get status() {
+    return WorldStatus;
+  },
+});
+export type World = __Infer<typeof World>;
+
+// The tagged union or sum type for the algebraic type `WorldStatus`.
+export const WorldStatus = __t.enum("WorldStatus", {
+  Lobby: __t.unit(),
+  Running: __t.unit(),
+  Ended: __t.unit(),
+});
+export type WorldStatus = __Infer<typeof WorldStatus>;
+
