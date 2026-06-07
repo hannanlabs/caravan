@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
 import { tables, reducers } from '../src/module_bindings';
+import type { Resource } from '../src/module_bindings/types';
+import TradeOfferRow from '../src/module_bindings/trade_offer_table';
+import TrustRow from '../src/module_bindings/trust_table';
+import type { Infer } from 'spacetimedb';
 import type { InitialSnapshot, WorldData, NationData } from '../lib/spacetimedb-server';
+
+type TradeOfferData = Infer<typeof TradeOfferRow>;
+type TrustData = Infer<typeof TrustRow>;
 
 interface NationDashboardProps {
   initialSnapshot: InitialSnapshot;
@@ -13,11 +20,15 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const { isActive, identity } = useSpacetimeDB();
   const [worlds, worldLoading] = useTable(tables.world);
   const [nations, nationsLoading] = useTable(tables.nation);
+  const [tradeOffers] = useTable(tables.tradeOffer);
+  const [trustRows] = useTable(tables.trust);
 
   const claim = useReducer(reducers.claimNation);
   const start = useReducer(reducers.startRun);
   const invest = useReducer(reducers.investEducation);
   const tax = useReducer(reducers.setTax);
+  const propose = useReducer(reducers.proposeTrade);
+  const respond = useReducer(reducers.respondTrade);
 
   const hydrated = isActive && !worldLoading && !nationsLoading;
   const world: WorldData | null = hydrated ? (worlds[0] ?? null) : initialSnapshot.world;
@@ -38,6 +49,18 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
     myNation && totalMoney > 0n
       ? (Number(myNation.money) / Number(totalMoney)) * 100
       : 0;
+
+  const myHex = identity?.toHexString();
+  const incomingOffers = tradeOffers.filter((o) => o.toOwner.toHexString() === myHex);
+  const outgoingOffers = tradeOffers.filter((o) => o.fromOwner.toHexString() === myHex);
+
+  // Build trust lookup: myHex → otherHex → value
+  const trustOut = new Map<string, number>();
+  for (const r of trustRows) {
+    if (r.fromOwner.toHexString() === myHex) {
+      trustOut.set(r.toOwner.toHexString(), r.value);
+    }
+  }
 
   const [nameInput, setNameInput] = useState('');
   const [taxInput, setTaxInput] = useState<number>(10);
@@ -70,9 +93,10 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
           <FlagCard myNation={myNation} />
           <NationListCard
             title="All Nations"
-            note="Allies / Rivals / Neutral split comes with Round 4 trust"
+            note="Trust values update as you trade with each nation"
             nations={sortedByMoney}
             identity={identity}
+            trustOut={trustOut}
           />
         </div>
 
@@ -103,7 +127,20 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
             onInvest={() => invest({ amount: 100n })}
             onSetTax={(rate) => tax({ rate })}
           />
-          <CreateTradeCard />
+          <IncomingTradesCard
+            offers={incomingOffers}
+            nations={nationList}
+            isActive={isActive}
+            onApprove={(id) => respond({ offerId: id, approve: true })}
+            onReject={(id) => respond({ offerId: id, approve: false })}
+          />
+          <CreateTradeCard
+            myNation={myNation}
+            nations={nationList}
+            isActive={isActive}
+            outgoing={outgoingOffers}
+            onPropose={(args) => propose(args)}
+          />
           <MetricsCard myNation={myNation} />
         </div>
       </div>
@@ -287,11 +324,13 @@ function NationListCard({
   note,
   nations,
   identity,
+  trustOut,
 }: {
   title: string;
   note: string;
   nations: readonly NationData[];
   identity?: { toHexString(): string };
+  trustOut: Map<string, number>;
 }) {
   return (
     <div className="card">
@@ -300,6 +339,7 @@ function NationListCard({
         {nations.length === 0 && <div className="card-empty">No nations yet</div>}
         {nations.map((n) => {
           const me = identity && n.owner.toHexString() === identity.toHexString();
+          const trustVal = me ? null : trustOut.get(n.owner.toHexString()) ?? null;
           return (
             <div key={n.owner.toHexString()} className={`nation-row ${me ? 'me' : ''}`}>
               <div className="nation-row-flag" />
@@ -307,7 +347,9 @@ function NationListCard({
                 <div className="nation-row-name">{n.name}{me && ' (you)'}</div>
                 <div className="nation-row-meta">{formatMoneyShort(n.money)} · Edu {(n.education * 100).toFixed(0)}%</div>
               </div>
-              <div className="nation-row-trust">Trust: —</div>
+              <div className="nation-row-trust">
+                {me ? '' : trustVal === null ? 'Trust: —' : `Trust: ${trustVal}`}
+              </div>
             </div>
           );
         })}
@@ -516,11 +558,211 @@ function ActionsCard(props: ActionsCardProps) {
   );
 }
 
-function CreateTradeCard() {
+interface CreateTradeCardProps {
+  myNation?: NationData;
+  nations: readonly NationData[];
+  isActive: boolean;
+  outgoing: TradeOfferData[];
+  onPropose: (args: {
+    to: NationData['owner'];
+    giveResource: Resource;
+    giveAmount: bigint;
+    getResource: Resource;
+    getAmount: bigint;
+  }) => void;
+}
+
+function CreateTradeCard({ myNation, nations, isActive, outgoing, onPropose }: CreateTradeCardProps) {
+  const others = nations.filter(
+    (n) => myNation && n.owner.toHexString() !== myNation.owner.toHexString()
+  );
+
+  const [targetHex, setTargetHex] = useState('');
+  const [giveRes, setGiveRes] = useState<'Goods' | 'Energy'>('Goods');
+  const [giveAmt, setGiveAmt] = useState<string>('10');
+  const [getRes, setGetRes] = useState<'Goods' | 'Energy'>('Energy');
+  const [getAmt, setGetAmt] = useState<string>('10');
+
+  useEffect(() => {
+    if (others.length > 0 && !others.find((n) => n.owner.toHexString() === targetHex)) {
+      setTargetHex(others[0]!.owner.toHexString());
+    }
+  }, [others.map((n) => n.owner.toHexString()).join(',')]);
+
+  if (!myNation) {
+    return (
+      <div className="card">
+        <div className="card-title">Create Trade</div>
+        <div className="card-empty">Claim a nation to trade.</div>
+      </div>
+    );
+  }
+
+  const submit = () => {
+    const target = others.find((n) => n.owner.toHexString() === targetHex);
+    if (!target) return;
+    const gAmt = BigInt(giveAmt || '0');
+    const rAmt = BigInt(getAmt || '0');
+    if (gAmt === 0n || rAmt === 0n) return;
+    onPropose({
+      to: target.owner,
+      giveResource: { tag: giveRes } as Resource,
+      giveAmount: gAmt,
+      getResource: { tag: getRes } as Resource,
+      getAmount: rAmt,
+    });
+  };
+
   return (
     <div className="card">
       <div className="card-title">Create Trade</div>
-      <span className="card-coming">Coming Round 4 (trade_offer table)</span>
+      {others.length === 0 ? (
+        <div className="card-empty">No other nations to trade with yet.</div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 11, color: '#8b96b0' }}>
+              To
+              <select
+                value={targetHex}
+                onChange={(e) => setTargetHex(e.target.value)}
+                style={selectStyle}
+              >
+                {others.map((n) => (
+                  <option key={n.owner.toHexString()} value={n.owner.toHexString()}>
+                    {n.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ fontSize: 11, color: '#8b96b0' }}>
+                I give
+                <select value={giveRes} onChange={(e) => setGiveRes(e.target.value as any)} style={selectStyle}>
+                  <option value="Goods">Goods</option>
+                  <option value="Energy">Energy</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 11, color: '#8b96b0' }}>
+                Amount
+                <input
+                  type="number"
+                  min={1}
+                  value={giveAmt}
+                  onChange={(e) => setGiveAmt(e.target.value)}
+                  style={selectStyle}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ fontSize: 11, color: '#8b96b0' }}>
+                I want
+                <select value={getRes} onChange={(e) => setGetRes(e.target.value as any)} style={selectStyle}>
+                  <option value="Goods">Goods</option>
+                  <option value="Energy">Energy</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 11, color: '#8b96b0' }}>
+                Amount
+                <input
+                  type="number"
+                  min={1}
+                  value={getAmt}
+                  onChange={(e) => setGetAmt(e.target.value)}
+                  style={selectStyle}
+                />
+              </label>
+            </div>
+            <button
+              onClick={submit}
+              disabled={!isActive || !targetHex}
+              style={{ ...selectStyle, background: '#2ed573', color: '#0a0e1a', fontWeight: 600, cursor: 'pointer', padding: '8px 12px' }}
+            >
+              Propose
+            </button>
+          </div>
+        </>
+      )}
+      {outgoing.length > 0 && (
+        <div style={{ marginTop: 10, borderTop: '1px solid #1f2940', paddingTop: 10 }}>
+          <div style={{ fontSize: 11, color: '#8b96b0', marginBottom: 6 }}>Awaiting response</div>
+          {outgoing.map((o) => {
+            const target = nations.find((n) => n.owner.toHexString() === o.toOwner.toHexString());
+            return (
+              <div key={o.id.toString()} style={{ fontSize: 12, color: '#e5eaf2', marginBottom: 4 }}>
+                → {target?.name ?? '?'}: {o.giveAmount.toString()} {o.giveResource.tag.toLowerCase()} for {o.getAmount.toString()} {o.getResource.tag.toLowerCase()}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const selectStyle: React.CSSProperties = {
+  background: '#0a0e1a',
+  border: '1px solid #2a3550',
+  borderRadius: 6,
+  padding: '6px 8px',
+  color: '#e5eaf2',
+  width: '100%',
+  marginTop: 4,
+  fontSize: 12,
+};
+
+function IncomingTradesCard({
+  offers,
+  nations,
+  isActive,
+  onApprove,
+  onReject,
+}: {
+  offers: TradeOfferData[];
+  nations: readonly NationData[];
+  isActive: boolean;
+  onApprove: (id: bigint) => void;
+  onReject: (id: bigint) => void;
+}) {
+  return (
+    <div className="card">
+      <div className="card-title">Incoming Trades ({offers.length})</div>
+      {offers.length === 0 ? (
+        <div className="card-empty">No pending offers.</div>
+      ) : (
+        offers.map((o) => {
+          const from = nations.find((n) => n.owner.toHexString() === o.fromOwner.toHexString());
+          return (
+            <div
+              key={o.id.toString()}
+              style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, background: '#0a0e1a', borderRadius: 6 }}
+            >
+              <div style={{ fontSize: 13 }}>
+                <strong>{from?.name ?? '?'}</strong> offers{' '}
+                <span style={{ color: '#2ed573' }}>{o.giveAmount.toString()} {o.giveResource.tag.toLowerCase()}</span>{' '}
+                for{' '}
+                <span style={{ color: '#ff4757' }}>{o.getAmount.toString()} {o.getResource.tag.toLowerCase()}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => onApprove(o.id)}
+                  disabled={!isActive}
+                  style={{ flex: 1, background: '#2ed573', color: '#0a0e1a', border: 'none', borderRadius: 4, padding: '6px 0', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => onReject(o.id)}
+                  disabled={!isActive}
+                  style={{ flex: 1, background: '#ff4757', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 0', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
