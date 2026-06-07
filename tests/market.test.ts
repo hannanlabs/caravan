@@ -25,6 +25,15 @@ import {
   warAttrition,
   priceCycle,
   CYCLE_BAND,
+  desiredStockpile,
+  surplusToSell,
+  deficitToBuy,
+  weakestStat,
+  tradeIsFavourable,
+  pickSurplusCommodity,
+  pickDeficitCommodity,
+  COMMODITY_KEYS,
+  type CommodityKey,
   CRISIS_MAX_FACTOR,
   MAX_FACTOR,
   MIN_FACTOR,
@@ -218,6 +227,49 @@ describe('price cycle', () => {
     const lo = computeTargetPrice(10, 1, 1, 1, 1, 0.9);
     const hi = computeTargetPrice(10, 1, 1, 1, 1, 1.1);
     expect(hi).toBeGreaterThan(lo);
+  });
+});
+
+describe('bot decisions', () => {
+  const fullStock = () => {
+    const s = {} as Record<CommodityKey, number>;
+    for (const c of COMMODITY_KEYS) s[c] = desiredStockpile(c);
+    return s;
+  };
+
+  it('sells only a clear surplus, buys only a clear deficit', () => {
+    const target = desiredStockpile('oil');
+    expect(surplusToSell(target, target)).toBe(0);          // at target → no sell
+    expect(surplusToSell(target * 3, target)).toBeGreaterThan(0); // big surplus → sell
+    expect(deficitToBuy(target, target, 9999)).toBe(0);     // at target → no buy
+    expect(deficitToBuy(0, target, 9999)).toBeGreaterThan(0); // empty → buy
+  });
+
+  it('never buys more than affordable', () => {
+    const target = desiredStockpile('oil');
+    expect(deficitToBuy(0, target, 3)).toBeLessThanOrEqual(3);
+  });
+
+  it('weakestStat returns the lowest stat', () => {
+    expect(weakestStat({ education: 0.8, health: 0.2, military: 0.5, technology: 0.6 })).toBe('health');
+    expect(weakestStat({ education: 0.1, health: 0.9, military: 0.9, technology: 0.9 })).toBe('education');
+  });
+
+  it('tradeIsFavourable compares market value of both legs', () => {
+    const price = (c: CommodityKey) => ({ oil: 5, energy: 4, grain: 2, steel: 3, medicine: 6, electronics: 8 }[c]);
+    // give 10 grain ($20) for 10 oil ($50) → great for receiver
+    expect(tradeIsFavourable('grain', 10, 'oil', 10, price)).toBe(true);
+    // give 10 oil ($50) for 10 grain ($20) → bad for receiver
+    expect(tradeIsFavourable('oil', 10, 'grain', 10, price)).toBe(false);
+  });
+
+  it('picks the biggest surplus and the biggest deficit', () => {
+    const s = fullStock();
+    s.oil = desiredStockpile('oil') * 4;   // big surplus
+    s.medicine = 0;                         // big deficit
+    expect(pickSurplusCommodity(s)).toBe('oil');
+    expect(pickDeficitCommodity(s)).toBe('medicine');
+    expect(pickSurplusCommodity(fullStock())).toBeNull(); // balanced → nothing to dump
   });
 });
 

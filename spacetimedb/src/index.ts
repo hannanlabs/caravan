@@ -42,6 +42,15 @@ import {
   WAR_MARKET_DEMAND,
   WAR_DECLARE_COST,
   WAR_TRUST_HIT,
+  assetsForCategory,
+  desiredStockpile,
+  surplusToSell,
+  deficitToBuy,
+  weakestStat,
+  tradeIsFavourable,
+  pickSurplusCommodity,
+  pickDeficitCommodity,
+  BOT_RESERVE_MONEY,
   type CommodityKey,
   type OwnedAsset,
   type StatKey,
@@ -76,6 +85,7 @@ const nation = table(
     military: t.f32(),
     technology: t.f32(),
     gdp: t.f64(),
+    bot: t.bool(),
   }
 );
 
@@ -471,7 +481,7 @@ function seedWorld(ctx: Ctx) {
     const owner = Identity.fromString(s.hex);
     const stats = { education: s.education, taxRate: s.taxRate, health: s.health, military: s.military, technology: s.technology };
     const gdp = seedNationGdp(s.name, stats);
-    ctx.db.nation.insert({ owner, name: s.name, money: STARTING_MONEY, ...stats, gdp });
+    ctx.db.nation.insert({ owner, name: s.name, money: STARTING_MONEY, ...stats, gdp, bot: true });
     seedNationEconomy(ctx, owner, s.name);
     ctx.db.gdpHistory.insert({ id: 0n, owner, year: 0, gdp });
   }
@@ -502,7 +512,7 @@ export const claimNation = spacetimedb.reducer({ name: t.string() }, (ctx, { nam
       else if (wr.defender.toHexString() === existing.owner.toHexString()) ctx.db.war.id.update({ ...wr, defender: ctx.sender });
     }
     ctx.db.nation.owner.delete(existing.owner);
-    const taken = { ...existing, owner: ctx.sender };
+    const taken = { ...existing, owner: ctx.sender, bot: false };
     ctx.db.nation.insert(taken);
     recomputeNationGdp(ctx, taken);
     logEvent(ctx, name, `${name} joined the world.`);
@@ -511,7 +521,7 @@ export const claimNation = spacetimedb.reducer({ name: t.string() }, (ctx, { nam
 
   const stats = { education: STARTING_EDUCATION, taxRate: STARTING_TAX, health: STARTING_HEALTH, military: STARTING_MILITARY, technology: STARTING_TECHNOLOGY };
   const gdp = seedNationGdp(name, stats);
-  ctx.db.nation.insert({ owner: ctx.sender, name, money: STARTING_MONEY, ...stats, gdp });
+  ctx.db.nation.insert({ owner: ctx.sender, name, money: STARTING_MONEY, ...stats, gdp, bot: false });
   seedNationEconomy(ctx, ctx.sender, name);
   ctx.db.gdpHistory.insert({ id: 0n, owner: ctx.sender, year: 0, gdp });
   logEvent(ctx, name, `${name} joined the world.`);
@@ -535,10 +545,15 @@ export const setTax = spacetimedb.reducer({ rate: t.f32() }, (ctx, { rate }) => 
   logEvent(ctx, n.name, `🏛 ${n.name} set tax rate to ${(clamped * 100).toFixed(0)}%.`);
 });
 
-// ---------- market: buy / sell (instant, no time advance) ----------
-export const buyCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
-  requireRunning(ctx);
-  const n = requireMyNation(ctx);
+// ============================================================
+// Owner-parameterized action helpers — shared by the public reducers (passing
+// ctx.sender) and the bot engine (passing a bot's owner). Helpers still THROW on
+// invalid input (reducers rely on that for client feedback); the bot engine
+// pre-validates with pure guards so it never triggers a throw inside settleYear.
+// ============================================================
+function marketBuy(ctx: Ctx, owner: Identity, commodity: string, amount: bigint): bigint {
+  const n = ctx.db.nation.owner.find(owner);
+  if (!n) throw new SenderError('not a participant — claim a nation first');
   if (!isCommodity(commodity)) throw new Error('unknown commodity');
   if (amount <= 0n) throw new Error('amount must be > 0');
   const m = ctx.db.commodityMarket.commodity.find(commodity);
@@ -547,130 +562,117 @@ export const buyCommodity = spacetimedb.reducer({ commodity: t.string(), amount:
   if (!canAfford(Number(n.money), m.currentPrice, amt)) throw new Error('insufficient money');
   const cost = toBig(costOf(m.currentPrice, amt));
   ctx.db.nation.owner.update({ ...n, money: n.money - cost });
-  addStockpile(ctx, n.owner, commodity, amount);
+  addStockpile(ctx, owner, commodity, amount);
   const nextPrice = clampPrice(m.currentPrice + priceImpact(m.currentPrice, amt, m.globalSupply, 'buy'), m.basePrice, eventActive(m.crisisUntilYear, getWorld(ctx).year));
   ctx.db.commodityMarket.commodity.update({ ...m, recentBuyVolume: m.recentBuyVolume + amt, currentPrice: nextPrice });
-  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
-  logEvent(ctx, n.name, `📈 ${n.name} bought ${amt} ${commodity} for $${Number(cost)}M.`);
-});
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(owner)!);
+  return cost;
+}
 
-export const sellCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
-  requireRunning(ctx);
-  const n = requireMyNation(ctx);
+function marketSell(ctx: Ctx, owner: Identity, commodity: string, amount: bigint): bigint {
+  const n = ctx.db.nation.owner.find(owner);
+  if (!n) throw new SenderError('not a participant — claim a nation first');
   if (!isCommodity(commodity)) throw new Error('unknown commodity');
   if (amount <= 0n) throw new Error('amount must be > 0');
   const m = ctx.db.commodityMarket.commodity.find(commodity);
   if (!m) throw new Error('market not found');
-  const have = stockpileAmount(ctx, n.owner, commodity);
-  if (!canSell(Number(have), Number(amount))) throw new Error('insufficient stockpile');
+  if (!canSell(Number(stockpileAmount(ctx, owner, commodity)), Number(amount))) throw new Error('insufficient stockpile');
   const amt = Number(amount);
   const revenue = toBig(costOf(m.currentPrice, amt));
-  addStockpile(ctx, n.owner, commodity, -amount);
+  addStockpile(ctx, owner, commodity, -amount);
   ctx.db.nation.owner.update({ ...n, money: n.money + revenue });
   const nextPrice = clampPrice(m.currentPrice + priceImpact(m.currentPrice, amt, m.globalSupply, 'sell'), m.basePrice, eventActive(m.crisisUntilYear, getWorld(ctx).year));
   ctx.db.commodityMarket.commodity.update({ ...m, recentSellVolume: m.recentSellVolume + amt, currentPrice: nextPrice });
-  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
-  logEvent(ctx, n.name, `📉 ${n.name} sold ${amt} ${commodity} for $${Number(revenue)}M.`);
-});
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(owner)!);
+  return revenue;
+}
 
-// ---------- assets ----------
-export const buildAsset = spacetimedb.reducer({ typeKey: t.string() }, (ctx, { typeKey }) => {
-  const w = requireRunning(ctx);
-  const n = requireMyNation(ctx);
+function doBuildAsset(ctx: Ctx, owner: Identity, typeKey: string) {
+  const w = getWorld(ctx);
+  const n = ctx.db.nation.owner.find(owner);
+  if (!n) throw new SenderError('not a participant — claim a nation first');
   const def = ASSET_BY_KEY[typeKey];
   if (!def) throw new Error('unknown asset');
-  const stocks = stockpileMapNumber(ctx, n.owner);
-  const check = canBuildAsset(Number(n.money), stocks, def);
+  const check = canBuildAsset(Number(n.money), stockpileMapNumber(ctx, owner), def);
   if (!check.ok) throw new Error(`cannot build ${def.label}: missing ${check.missing}`);
   ctx.db.nation.owner.update({ ...n, money: n.money - toBig(def.costMoney) });
-  for (const c of def.costs) addStockpile(ctx, n.owner, c.commodity, -toBig(c.amount));
-  ctx.db.asset.insert({ id: 0n, owner: n.owner, typeKey, builtYear: w.year });
-  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
-  logEvent(ctx, n.name, `🏗 ${n.name} built a ${def.label}.`);
-});
+  for (const c of def.costs) addStockpile(ctx, owner, c.commodity, -toBig(c.amount));
+  ctx.db.asset.insert({ id: 0n, owner, typeKey, builtYear: w.year });
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(owner)!);
+  return def;
+}
 
-// ---------- peer-to-peer trade (now spans all commodities) ----------
-export const proposeTrade = spacetimedb.reducer(
-  { to: t.identity(), giveCommodity: t.string(), giveAmount: t.u64(), getCommodity: t.string(), getAmount: t.u64() },
-  (ctx, { to, giveCommodity, giveAmount, getCommodity, getAmount }) => {
-    requireRunning(ctx);
-    const me = requireMyNation(ctx);
-    if (to.toHexString() === ctx.sender.toHexString()) throw new Error('cannot trade with yourself');
-    if (!isCommodity(giveCommodity) || !isCommodity(getCommodity)) throw new Error('unknown commodity');
-    const counterparty = ctx.db.nation.owner.find(to);
-    if (!counterparty) throw new Error('target nation does not exist');
-    if (giveAmount <= 0n || getAmount <= 0n) throw new Error('amounts must be > 0');
-    if (stockpileAmount(ctx, ctx.sender, giveCommodity) < giveAmount) throw new Error(`insufficient ${giveCommodity} to offer`);
-    ctx.db.tradeOffer.insert({
-      id: 0n, fromOwner: ctx.sender, toOwner: to,
-      giveCommodity, giveAmount, getCommodity, getAmount, createdAt: ctx.timestamp,
-    });
-    logEvent(ctx, me.name, `🤝 ${me.name} offered ${counterparty.name}: ${giveAmount} ${giveCommodity} for ${getAmount} ${getCommodity}.`);
-  }
-);
+function doProposeTrade(ctx: Ctx, from: Identity, to: Identity, giveCommodity: string, giveAmount: bigint, getCommodity: string, getAmount: bigint) {
+  if (to.toHexString() === from.toHexString()) throw new Error('cannot trade with yourself');
+  if (!isCommodity(giveCommodity) || !isCommodity(getCommodity)) throw new Error('unknown commodity');
+  if (!ctx.db.nation.owner.find(to)) throw new Error('target nation does not exist');
+  if (giveAmount <= 0n || getAmount <= 0n) throw new Error('amounts must be > 0');
+  if (stockpileAmount(ctx, from, giveCommodity) < giveAmount) throw new Error(`insufficient ${giveCommodity} to offer`);
+  ctx.db.tradeOffer.insert({ id: 0n, fromOwner: from, toOwner: to, giveCommodity, giveAmount, getCommodity, getAmount, createdAt: ctx.timestamp });
+}
 
-export const respondTrade = spacetimedb.reducer({ offerId: t.u64(), approve: t.bool() }, (ctx, { offerId, approve }) => {
-  requireRunning(ctx);
+function doRespondTrade(ctx: Ctx, responder: Identity, offerId: bigint, approve: boolean) {
   const offer = ctx.db.tradeOffer.id.find(offerId);
   if (!offer) throw new Error('offer not found');
-  if (offer.toOwner.toHexString() !== ctx.sender.toHexString()) throw new SenderError('only the recipient can respond');
+  if (offer.toOwner.toHexString() !== responder.toHexString()) throw new SenderError('only the recipient can respond');
 
   if (!approve) {
     bumpTrust(ctx, offer.fromOwner, offer.toOwner, -5);
-    const proposer = ctx.db.nation.owner.find(offer.fromOwner);
-    const responder = ctx.db.nation.owner.find(offer.toOwner);
-    if (proposer && responder) logEvent(ctx, responder.name, `❌ ${responder.name} rejected ${proposer.name}'s trade.`);
+    const p = ctx.db.nation.owner.find(offer.fromOwner);
+    const r = ctx.db.nation.owner.find(offer.toOwner);
+    if (p && r) logEvent(ctx, r.name, `❌ ${r.name} rejected ${p.name}'s trade.`);
     ctx.db.tradeOffer.id.delete(offerId);
     return;
   }
 
   const proposer = ctx.db.nation.owner.find(offer.fromOwner);
-  const responder = ctx.db.nation.owner.find(offer.toOwner);
-  if (!proposer || !responder) throw new Error('a party no longer exists');
+  const responderN = ctx.db.nation.owner.find(offer.toOwner);
+  if (!proposer || !responderN) throw new Error('a party no longer exists');
   if (stockpileAmount(ctx, offer.fromOwner, offer.giveCommodity) < offer.giveAmount) throw new Error('proposer can no longer cover the offer');
   if (stockpileAmount(ctx, offer.toOwner, offer.getCommodity) < offer.getAmount) throw new Error('you do not have enough to fulfil the offer');
 
-  // Atomic swap.
   addStockpile(ctx, offer.fromOwner, offer.giveCommodity, -offer.giveAmount);
   addStockpile(ctx, offer.toOwner, offer.giveCommodity, offer.giveAmount);
   addStockpile(ctx, offer.toOwner, offer.getCommodity, -offer.getAmount);
   addStockpile(ctx, offer.fromOwner, offer.getCommodity, offer.getAmount);
-
   bumpTrust(ctx, offer.fromOwner, offer.toOwner, 5);
   bumpTrust(ctx, offer.toOwner, offer.fromOwner, 5);
   recomputeNationGdp(ctx, ctx.db.nation.owner.find(offer.fromOwner)!);
   recomputeNationGdp(ctx, ctx.db.nation.owner.find(offer.toOwner)!);
-  logEvent(ctx, responder.name, `✅ ${responder.name} accepted ${proposer.name}'s trade · ${offer.giveAmount} ${offer.giveCommodity} ↔ ${offer.getAmount} ${offer.getCommodity}.`);
+  logEvent(ctx, responderN.name, `✅ ${responderN.name} accepted ${proposer.name}'s trade · ${offer.giveAmount} ${offer.giveCommodity} ↔ ${offer.getAmount} ${offer.getCommodity}.`);
   ctx.db.tradeOffer.id.delete(offerId);
-});
+}
 
-// ---------- war ----------
-export const declareWar = spacetimedb.reducer({ target: t.identity() }, (ctx, { target }) => {
-  const w = requireRunning(ctx);
-  const me = requireMyNation(ctx);
-  if (target.toHexString() === ctx.sender.toHexString()) throw new Error('cannot declare war on yourself');
-  const enemy = ctx.db.nation.owner.find(target);
-  if (!enemy) throw new Error('target nation does not exist');
+function activeWarBetween(ctx: Ctx, a: string, b: string): boolean {
   for (const wr of ctx.db.war.iter()) {
     if (!wr.active) continue;
-    const a = wr.attacker.toHexString(), d = wr.defender.toHexString();
-    const me2 = ctx.sender.toHexString(), t2 = target.toHexString();
-    if ((a === me2 && d === t2) || (a === t2 && d === me2)) throw new Error('already at war with them');
+    const x = wr.attacker.toHexString(), y = wr.defender.toHexString();
+    if ((x === a && y === b) || (x === b && y === a)) return true;
   }
-  ctx.db.war.insert({ id: 0n, attacker: ctx.sender, defender: target, startYear: w.year, active: true });
+  return false;
+}
+
+function doDeclareWar(ctx: Ctx, attacker: Identity, target: Identity) {
+  const w = getWorld(ctx);
+  const me = ctx.db.nation.owner.find(attacker);
+  if (!me) throw new SenderError('not a participant — claim a nation first');
+  if (target.toHexString() === attacker.toHexString()) throw new Error('cannot declare war on yourself');
+  const enemy = ctx.db.nation.owner.find(target);
+  if (!enemy) throw new Error('target nation does not exist');
+  if (activeWarBetween(ctx, attacker.toHexString(), target.toHexString())) throw new Error('already at war with them');
+  ctx.db.war.insert({ id: 0n, attacker, defender: target, startYear: w.year, active: true });
   ctx.db.nation.owner.update({ ...me, money: me.money > toBig(WAR_DECLARE_COST) ? me.money - toBig(WAR_DECLARE_COST) : 0n });
-  bumpTrust(ctx, ctx.sender, target, -WAR_TRUST_HIT);
-  bumpTrust(ctx, target, ctx.sender, -WAR_TRUST_HIT);
-  recomputeNationGdp(ctx, ctx.db.nation.owner.find(ctx.sender)!);
+  bumpTrust(ctx, attacker, target, -WAR_TRUST_HIT);
+  bumpTrust(ctx, target, attacker, -WAR_TRUST_HIT);
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(attacker)!);
   recomputeNationGdp(ctx, ctx.db.nation.owner.find(target)!);
   logEvent(ctx, me.name, `⚔ ${me.name} declared war on ${enemy.name}.`);
-});
+}
 
-export const makePeace = spacetimedb.reducer({ warId: t.u64() }, (ctx, { warId }) => {
-  requireRunning(ctx);
+function doMakePeace(ctx: Ctx, actor: Identity, warId: bigint) {
   const wr = ctx.db.war.id.find(warId);
   if (!wr || !wr.active) throw new Error('war not found');
-  const hex = ctx.sender.toHexString();
+  const hex = actor.toHexString();
   if (wr.attacker.toHexString() !== hex && wr.defender.toHexString() !== hex) throw new SenderError('not a belligerent in this war');
   ctx.db.war.id.update({ ...wr, active: false });
   bumpTrust(ctx, wr.attacker, wr.defender, 10);
@@ -680,7 +682,174 @@ export const makePeace = spacetimedb.reducer({ warId: t.u64() }, (ctx, { warId }
   if (a) recomputeNationGdp(ctx, a);
   if (d) recomputeNationGdp(ctx, d);
   if (a && d) logEvent(ctx, a.name, `🕊 ${a.name} and ${d.name} signed peace.`);
+}
+
+// ---------- public reducers (thin wrappers over the helpers) ----------
+export const buyCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
+  requireRunning(ctx);
+  requireMyNation(ctx);
+  const cost = marketBuy(ctx, ctx.sender, commodity, amount);
+  const n = ctx.db.nation.owner.find(ctx.sender)!;
+  logEvent(ctx, n.name, `📈 ${n.name} bought ${Number(amount)} ${commodity} for $${Number(cost)}M.`);
 });
+
+export const sellCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
+  requireRunning(ctx);
+  requireMyNation(ctx);
+  const revenue = marketSell(ctx, ctx.sender, commodity, amount);
+  const n = ctx.db.nation.owner.find(ctx.sender)!;
+  logEvent(ctx, n.name, `📉 ${n.name} sold ${Number(amount)} ${commodity} for $${Number(revenue)}M.`);
+});
+
+export const buildAsset = spacetimedb.reducer({ typeKey: t.string() }, (ctx, { typeKey }) => {
+  requireRunning(ctx);
+  const n = requireMyNation(ctx);
+  const def = doBuildAsset(ctx, ctx.sender, typeKey);
+  logEvent(ctx, n.name, `🏗 ${n.name} built a ${def.label}.`);
+});
+
+export const proposeTrade = spacetimedb.reducer(
+  { to: t.identity(), giveCommodity: t.string(), giveAmount: t.u64(), getCommodity: t.string(), getAmount: t.u64() },
+  (ctx, { to, giveCommodity, giveAmount, getCommodity, getAmount }) => {
+    requireRunning(ctx);
+    const me = requireMyNation(ctx);
+    doProposeTrade(ctx, ctx.sender, to, giveCommodity, giveAmount, getCommodity, getAmount);
+    const cp = ctx.db.nation.owner.find(to);
+    logEvent(ctx, me.name, `🤝 ${me.name} offered ${cp?.name ?? '?'}: ${giveAmount} ${giveCommodity} for ${getAmount} ${getCommodity}.`);
+  }
+);
+
+export const respondTrade = spacetimedb.reducer({ offerId: t.u64(), approve: t.bool() }, (ctx, { offerId, approve }) => {
+  requireRunning(ctx);
+  doRespondTrade(ctx, ctx.sender, offerId, approve);
+});
+
+export const declareWar = spacetimedb.reducer({ target: t.identity() }, (ctx, { target }) => {
+  requireRunning(ctx);
+  requireMyNation(ctx);
+  doDeclareWar(ctx, ctx.sender, target);
+});
+
+export const makePeace = spacetimedb.reducer({ warId: t.u64() }, (ctx, { warId }) => {
+  requireRunning(ctx);
+  doMakePeace(ctx, ctx.sender, warId);
+});
+
+// ============================================================
+// Bot AI — each bot nation takes a turn during settlement. Every action is
+// pre-validated with pure guards AND wrapped in try/catch, so a bot can never
+// abort the Advance Year transaction.
+// ============================================================
+const BOT_PROPOSE_CHANCE = 0.3;
+const BOT_WAR_CHANCE = 0.015;
+const BOT_MAX_ACTIVE_WARS = 4;
+
+function trustValue(ctx: Ctx, from: Identity, to: Identity): number {
+  return [...ctx.db.trust.by_pair.filter([from, to])][0]?.value ?? 50;
+}
+
+function botPriceOf(ctx: Ctx): (c: CommodityKey) => number {
+  return (c) => ctx.db.commodityMarket.commodity.find(c)?.currentPrice ?? COMMODITIES[c].basePrice;
+}
+
+function activeWarsCount(ctx: Ctx): number {
+  let n = 0;
+  for (const wr of ctx.db.war.iter()) if (wr.active) n++;
+  return n;
+}
+
+function runBots(ctx: Ctx, year: number) {
+  const priceOf = botPriceOf(ctx);
+  const bots = [...ctx.db.nation.iter()].filter((n) => n.bot).sort((a, b) => (a.owner.toHexString() < b.owner.toHexString() ? -1 : 1));
+
+  for (const bot of bots) {
+    const owner = bot.owner;
+    try {
+      // a. answer incoming offers
+      for (const offer of [...ctx.db.tradeOffer.iter()].filter((o) => o.toOwner.toHexString() === owner.toHexString())) {
+        if (!isCommodity(offer.giveCommodity) || !isCommodity(offer.getCommodity)) continue;
+        const canFulfil = stockpileAmount(ctx, owner, offer.getCommodity) >= offer.getAmount;
+        const proposerCovers = stockpileAmount(ctx, offer.fromOwner, offer.giveCommodity) >= offer.giveAmount;
+        const fair = tradeIsFavourable(offer.giveCommodity, Number(offer.giveAmount), offer.getCommodity, Number(offer.getAmount), priceOf);
+        const trust = trustValue(ctx, owner, offer.fromOwner);
+        if (canFulfil && proposerCovers && fair && trust > 15) doRespondTrade(ctx, owner, offer.id, true);
+        else doRespondTrade(ctx, owner, offer.id, false);
+      }
+
+      // b. market rebalance (sell biggest surplus, buy biggest deficit)
+      let stocks = stockpileMapNumber(ctx, owner);
+      const sellC = pickSurplusCommodity(stocks);
+      if (sellC) {
+        const amt = surplusToSell(stocks[sellC], desiredStockpile(sellC));
+        if (amt > 0 && canSell(stocks[sellC], amt)) marketSell(ctx, owner, sellC, BigInt(amt));
+      }
+      let cur = ctx.db.nation.owner.find(owner)!;
+      stocks = stockpileMapNumber(ctx, owner);
+      const buyC = pickDeficitCommodity(stocks);
+      if (buyC && Number(cur.money) > BOT_RESERVE_MONEY) {
+        const spend = Number(cur.money) - BOT_RESERVE_MONEY;
+        const maxAff = spend / Math.max(1, priceOf(buyC));
+        const amt = deficitToBuy(stocks[buyC], desiredStockpile(buyC), maxAff);
+        if (amt > 0 && canAfford(Number(cur.money), priceOf(buyC), amt)) marketBuy(ctx, owner, buyC, BigInt(amt));
+      }
+
+      // c. build the most capable affordable asset in the weakest category
+      cur = ctx.db.nation.owner.find(owner)!;
+      if (Number(cur.money) > BOT_RESERVE_MONEY * 2) {
+        const stat = weakestStat({ education: cur.education, health: cur.health, military: cur.military, technology: cur.technology });
+        const candidates = assetsForCategory(stat).slice().sort((a, b) => b.costMoney - a.costMoney);
+        const stockMap = stockpileMapNumber(ctx, owner);
+        for (const def of candidates) {
+          if (canBuildAsset(Number(cur.money), stockMap, def).ok) {
+            doBuildAsset(ctx, owner, def.key);
+            logEvent(ctx, cur.name, `🏗 ${cur.name} built a ${def.label}.`);
+            break;
+          }
+        }
+      }
+
+      // d. occasionally propose a trade (surplus -> need) to another nation
+      if (ctx.random() < BOT_PROPOSE_CHANCE) {
+        const myOpen = [...ctx.db.tradeOffer.iter()].filter((o) => o.fromOwner.toHexString() === owner.toHexString()).length;
+        const sStocks = stockpileMapNumber(ctx, owner);
+        const give = pickSurplusCommodity(sStocks);
+        const get = pickDeficitCommodity(sStocks);
+        if (myOpen < 2 && give && get && give !== get) {
+          const others = [...ctx.db.nation.iter()].filter((n) => n.owner.toHexString() !== owner.toHexString());
+          if (others.length > 0) {
+            const target = others[ctx.random.integerInRange(0, others.length - 1)]!;
+            const giveAmt = 10;
+            const getAmt = Math.max(1, Math.round((giveAmt * priceOf(give)) / Math.max(1, priceOf(get))));
+            if (stockpileAmount(ctx, owner, give) >= BigInt(giveAmt) && !activeWarBetween(ctx, owner.toHexString(), target.owner.toHexString())) {
+              doProposeTrade(ctx, owner, target.owner, give, BigInt(giveAmt), get, BigInt(getAmt));
+            }
+          }
+        }
+      }
+
+      // e. sue for peace if losing a long war
+      for (const wr of [...ctx.db.war.iter()].filter((w) => w.active && (w.attacker.toHexString() === owner.toHexString() || w.defender.toHexString() === owner.toHexString()))) {
+        const enemyId = wr.attacker.toHexString() === owner.toHexString() ? wr.defender : wr.attacker;
+        const enemy = ctx.db.nation.owner.find(enemyId);
+        const me = ctx.db.nation.owner.find(owner);
+        if (me && enemy && me.military < enemy.military && year - wr.startYear >= 3) doMakePeace(ctx, owner, wr.id);
+      }
+
+      // f. rarely, a dominant bot declares war on a distrusted weaker neighbour
+      if (ctx.random() < BOT_WAR_CHANCE && activeWarsCount(ctx) < BOT_MAX_ACTIVE_WARS) {
+        const me = ctx.db.nation.owner.find(owner)!;
+        const targets = [...ctx.db.nation.iter()].filter((n) =>
+          n.owner.toHexString() !== owner.toHexString() &&
+          me.military > n.military * 1.3 &&
+          trustValue(ctx, owner, n.owner) < 25 &&
+          !activeWarBetween(ctx, owner.toHexString(), n.owner.toHexString()));
+        if (targets.length > 0) doDeclareWar(ctx, owner, targets[ctx.random.integerInRange(0, targets.length - 1)]!.owner);
+      }
+    } catch {
+      // A single bot's failed action never aborts the year.
+    }
+  }
+}
 
 // ---------- yearly settlement ----------
 function settleYear(ctx: Ctx) {
@@ -755,6 +924,9 @@ function settleYear(ctx: Ctx) {
       addStockpile(ctx, side, 'steel', -toBig(WAR_MATERIEL));
     }
   }
+
+  // Bot nations take their turn — their market orders feed this year's price drift.
+  runBots(ctx, newYear);
 
   // Market update per commodity (uses post-production/consumption stockpiles).
   for (const c of COMMODITY_KEYS) {

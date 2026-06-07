@@ -20,4 +20,5 @@ export default __t.row({
   military: __t.f32(),
   technology: __t.f32(),
   gdp: __t.f64(),
+  bot: __t.bool(),
 });

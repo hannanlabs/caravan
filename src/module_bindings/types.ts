@@ -63,6 +63,7 @@ export const Nation = __t.object("Nation", {
   military: __t.f32(),
   technology: __t.f32(),
   gdp: __t.f64(),
+  bot: __t.bool(),
 });
 export type Nation = __Infer<typeof Nation>;
 

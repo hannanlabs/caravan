@@ -354,3 +354,74 @@ export function computeGdpValue(n: GdpStats, resourceValue: number, tailwindGdp:
     + Math.max(0, tailwindGdp);
   return Math.max(0, core * clamp(1 - warSeverityTotal, WAR_GDP_FLOOR, 1));
 }
+
+// ============================================================
+// Bot decisions — PURE heuristics the in-module AI uses each year. No ctx, no
+// RNG here (the engine layers ctx.random on top); fully unit-testable.
+// ============================================================
+export const BOT_BUFFER_YEARS = 8;       // target stockpile ≈ this many years of consumption
+export const BOT_STOCK_FLOOR = 20;       // plus a small base buffer
+export const BOT_RESERVE_MONEY = 300;    // cash a bot keeps before building/buying
+export const BOT_SELL_FRACTION = 0.3;    // sell this share of the surplus above target
+export const BOT_BUY_FRACTION = 0.5;     // buy this share of the gap toward target
+export const BOT_MAX_ORDER = 60;         // cap a single bot market order
+
+// How much of a commodity a bot wants on hand.
+export function desiredStockpile(commodity: CommodityKey): number {
+  return COMMODITIES[commodity].consumptionPerNation * BOT_BUFFER_YEARS + BOT_STOCK_FLOOR;
+}
+
+// Units to sell when holding a surplus (0 if not clearly over target).
+export function surplusToSell(stock: number, target: number): number {
+  if (stock <= target * 1.5) return 0;
+  return Math.min(BOT_MAX_ORDER, Math.floor((stock - target) * BOT_SELL_FRACTION));
+}
+
+// Units to buy when short (bounded by what the bot can afford), 0 if not clearly short.
+export function deficitToBuy(stock: number, target: number, maxAffordable: number): number {
+  if (stock >= target * 0.6) return 0;
+  const want = Math.floor((target - stock) * BOT_BUY_FRACTION);
+  return Math.max(0, Math.min(BOT_MAX_ORDER, want, Math.floor(maxAffordable)));
+}
+
+// The lowest of the four development stats — where a bot should invest next.
+export function weakestStat(stats: { education: number; health: number; military: number; technology: number }): StatKey {
+  const entries: [StatKey, number][] = [
+    ['education', stats.education], ['health', stats.health],
+    ['military', stats.military], ['technology', stats.technology],
+  ];
+  entries.sort((a, b) => a[1] - b[1]);
+  return entries[0][0];
+}
+
+// A trade is favourable to the receiver if market value received ≥ ~value given.
+export function tradeIsFavourable(
+  giveC: CommodityKey, giveAmt: number, getC: CommodityKey, getAmt: number,
+  price: (c: CommodityKey) => number, tolerance = 0.95,
+): boolean {
+  const valueIn = getAmt * price(getC);
+  const valueOut = giveAmt * price(giveC);
+  return valueIn >= valueOut * tolerance;
+}
+
+// Pick the commodity a bot has the largest relative surplus of (to sell/offer).
+export function pickSurplusCommodity(stock: Record<CommodityKey, number>): CommodityKey | null {
+  let best: CommodityKey | null = null;
+  let bestRatio = 1.5; // must be clearly above target
+  for (const c of COMMODITY_KEYS) {
+    const ratio = stock[c] / Math.max(1, desiredStockpile(c));
+    if (ratio > bestRatio) { bestRatio = ratio; best = c; }
+  }
+  return best;
+}
+
+// Pick the commodity a bot is most short of (to buy/request).
+export function pickDeficitCommodity(stock: Record<CommodityKey, number>): CommodityKey | null {
+  let best: CommodityKey | null = null;
+  let worstRatio = 0.6; // must be clearly below target
+  for (const c of COMMODITY_KEYS) {
+    const ratio = stock[c] / Math.max(1, desiredStockpile(c));
+    if (ratio < worstRatio) { worstRatio = ratio; best = c; }
+  }
+  return best;
+}
