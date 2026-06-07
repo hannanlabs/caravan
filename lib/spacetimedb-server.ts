@@ -1,45 +1,42 @@
 import { DbConnection, tables } from '../src/module_bindings';
-import { Person } from '../src/module_bindings/types';
+import WorldRow from '../src/module_bindings/world_table';
+import NationRow from '../src/module_bindings/nation_table';
 import type { Infer } from 'spacetimedb';
 
 const HOST = process.env.SPACETIMEDB_HOST ?? 'wss://maincloud.spacetimedb.com';
-const DB_NAME = process.env.SPACETIMEDB_DB_NAME ?? 'nextjs-ts';
+const DB_NAME = process.env.SPACETIMEDB_DB_NAME ?? 'caravan-rsdsx';
 
-export type PersonData = Infer<typeof Person>;
+export type WorldData = Infer<typeof WorldRow>;
+export type NationData = Infer<typeof NationRow>;
 
-/**
- * Fetches the initial list of people from SpacetimeDB.
- * This function is designed for use in Next.js Server Components.
- *
- * It establishes a WebSocket connection, subscribes to the person table,
- * waits for the initial data, and then disconnects.
- */
-export async function fetchPeople(): Promise<PersonData[]> {
+export interface InitialSnapshot {
+  world: WorldData | null;
+}
+
+export async function fetchSnapshot(): Promise<InitialSnapshot> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new Error('SpacetimeDB connection timeout'));
     }, 10000);
 
-    const connection = DbConnection.builder()
+    DbConnection.builder()
       .withUri(HOST)
       .withDatabaseName(DB_NAME)
-      .onConnect(conn => {
-        // Subscribe to all people
+      .onConnect((conn) => {
         conn
           .subscriptionBuilder()
           .onApplied(() => {
             clearTimeout(timeoutId);
-            // Get all people from the cache
-            const people = Array.from(conn.db.person.iter());
+            const worldRows = Array.from(conn.db.world.iter());
             conn.disconnect();
-            resolve(people);
+            resolve({ world: worldRows[0] ?? null });
           })
           .onError((ctx) => {
             clearTimeout(timeoutId);
             conn.disconnect();
             reject(ctx.event ?? new Error('Subscription error'));
           })
-          .subscribe(tables.person);
+          .subscribe([tables.world]);
       })
       .onConnectError((_ctx, error) => {
         clearTimeout(timeoutId);
