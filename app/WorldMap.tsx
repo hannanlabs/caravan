@@ -47,10 +47,10 @@ export function WorldMap({ myNation, nations, trustOut }: WorldMapProps) {
         <div className="map-grid-bg" />
         <ComposableMap
           projection="geoEqualEarth"
-          projectionConfig={{ scale: 170 }}
+          projectionConfig={{ scale: 146 }}
           width={820}
-          height={360}
-          preserveAspectRatio="xMidYMid slice"
+          height={400}
+          preserveAspectRatio="xMidYMid meet"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: 'transparent', display: 'block' }}
         >
           <Geographies geography={geoUrl}>

@@ -50,7 +50,7 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
 
   if (!myNation) {
     return (
-      <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <div className="identity">
           <div className="id-flag">🏳</div>
           <div className="id-main">
@@ -70,7 +70,7 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
   ];
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
       <div className="identity">
         <div className="id-flag">{meta?.flag ?? '🏳'}</div>
         <div className="id-main">
