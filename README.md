@@ -1,123 +1,67 @@
-# 🚙 Caravan
+# Caravan
 
-> A live multiplayer economic simulation where you run a real-world nation and try to drive your GDP as high as possible over a 100-year run.
+A live multiplayer economic simulation. You run a real-world nation and try to push its GDP as high as possible over a 100-year run. There's no winner condition — the score is the point.
 
-Caravan is a strategy game built on [SpacetimeDB](https://spacetimedb.com) — every player connects to the same world database in real time, all moves are atomic reducer calls, and every browser sees state updates live as they happen. There's no winner — your only goal is to push your country's GDP as high as it'll go.
+Built on [SpacetimeDB](https://spacetimedb.com): every player connects to the same world database in real time, all moves are atomic reducer calls, and every browser sees state update live.
 
-[Reference RFC](https://www.notion.so/Caravan-RFC) · 26 seeded countries · Trade · Trust · Live event feed · World map
+## What you do
 
----
+Pick a country (USA, China, Pakistan, Japan, …) and inherit its real-world starting position: money supply scaled from nominal GDP, plus starting education, health, and tax-rate values. Then you make moves:
 
-## The core loop
+- **Trade** goods or energy with another nation. You file an offer; they approve or reject. Approval swaps resources atomically. Rejection costs you a little trust.
+- **Invest in education** to raise your education index — a direct GDP multiplier.
+- **Invest in healthcare** to raise your health index — another GDP multiplier (capped at +50%).
+- **Set tax rate** — fills your treasury via the production formula, but drags GDP down when high.
 
-You pick a country (USA, China, Pakistan, Japan, …) and inherit its real-world starting position — money supply scaled from nominal GDP, plus initial education, health, and tax-rate values reflecting that country's profile. Then you make moves:
+Money supply is your fuel. GDP is your score. You spend the first to grow the second.
 
-- 🤝 **Trade** Goods or Energy with another nation. You file an offer (`give X goods for Y energy`), they approve or reject. Approval swaps resources atomically; rejection burns a small bit of trust.
-- 📚 **Invest in Education** to raise your education index — a direct GDP multiplier.
-- ❤ **Invest in Healthcare** to raise your health index — another GDP multiplier (capped at +50% at full health).
-- 🏛 **Set tax rate** — tax rate fills your treasury implicitly via the production formula but drags GDP down at high levels.
+## How time works
 
-**Money supply is your fuel. GDP is your score. You burn the first to grow the second.**
+The clock is driven by activity, not real time. Every action and every trade response advances the world by +0.25 years, so ~400 actions take you from year 0 to year 100. At year 100 the world ends, the leaderboard freezes, and the highest-GDP nation "wins" (cosmetically).
 
-## Time is driven by activity
-
-Years don't pass on a clock. Every action and every trade response advances the world year by **+0.25**, so ~400 actions take the world from year 0 to year 100. Hit year 100 and the world flips to `Ended`; the leaderboard freezes; the highest-GDP nation wins the run (cosmetic — there's no real winner, the score is the point).
-
-When a fractional year crosses an integer boundary (0.75 → 1.00), an internal `tick_all()` runs: every nation recomputes its GDP and the new value gets written to `gdp_history` for the visualization.
+Each time a fractional year crosses an integer (e.g. 0.75 → 1.00), every nation recomputes its GDP and the value is written to history for the chart.
 
 ## Trust
 
-Each pair of nations has one trust value, 0–100, starting at 50.
-- ✅ **Completed trade** → both sides bump up by +5
-- ❌ **Rejection** → proposer loses 5 in the rejecter
+Each pair of nations shares one trust value (0–100, starting at 50). A completed trade bumps both sides +5; a rejection costs the proposer 5 in the rejecter's eyes. The dashboard sorts everyone into Allies (>60), Rivals (<40), and Neutral, and the world map colors regions to match.
 
-The dashboard splits the country roster into **Allies** (trust > 60), **Rivals** (< 40), and **Neutral** (everyone else). The world map colors regions to match.
+## GDP formula
 
-## Architecture
-
-```
-┌──────────────────────┐       WebSocket        ┌─────────────────────────┐
-│  Next.js + React 18  │  ◄──────────────────►  │  SpacetimeDB (WASM)     │
-│  (browser dashboard) │   live subscriptions   │  rules, tables, atomic  │
-│                      │   typed reducer calls  │  reducers, server time  │
-└──────────────────────┘                        └─────────────────────────┘
-```
-
-**SpacetimeDB** is a relational database that hosts your TypeScript module as a WebAssembly bundle. Reducers (`claim_nation`, `propose_trade`, …) run inside the database transactionally — no network calls, no clocks, no randomness besides what the host provides. Tables are pushed live to subscribed clients.
-
-**Next.js + React 18** renders the dashboard. The whole UI lives behind `useTable(tables.X)` hooks that auto-subscribe to a table and re-render on every change. Reducer calls go over the same WebSocket and the server's response triggers the cascade of updates.
-
-> The RFC describes an external **Node orchestrator** that drives AI nations via an LLM through the same reducers humans use. This is **deferred** in the current build — the world is human-only for now, with 26 seeded bot nations that you can trade with as if they were real players. AI orchestration lands in a future round.
-
-## Schema (current)
-
-| Table | Purpose |
-|---|---|
-| `world` | Singleton: `year`, `status` (Lobby/Running/Ended) |
-| `nation` | Per-player state: money, goods, energy, education, tax_rate, health, gdp |
-| `trade_offer` | Pending offers between two identities; auto-resolved on respond |
-| `trust` | Per-pair trust value (0–100), keyed by `(from_owner, to_owner)` |
-| `world_event` | Append-only event log for the live "World Events" feed |
-| `gdp_history` | Per-nation GDP samples at every year tick — drives the visualization |
-
-GDP formula:
 ```
 gdp = base × (1 + education) × (1 + 0.5 × health) × (1 − 0.5 × tax_rate)
     + (goods + energy) × 5
     + money × 0.1
 ```
 
-## Repo layout
+## Architecture
 
-```
-caravan/
-├── spacetimedb/src/index.ts          # SpacetimeDB TypeScript module (tables + reducers)
-├── src/module_bindings/              # auto-generated client bindings
-├── app/                              # Next.js routes
-│   ├── page.tsx                      # server component, SSR-fetches world
-│   ├── NationDashboard.tsx           # main client component, wires everything
-│   └── WorldMap.tsx                  # react-simple-maps + world-atlas
-├── components/                       # reusable modal primitives
-│   ├── Modal.tsx
-│   ├── shared.tsx                    # Section, Empty, Field, ProgressBar, Stat, styles
-│   ├── TradeModal.tsx
-│   ├── EducationModal.tsx
-│   ├── HealthcareModal.tsx
-│   ├── TaxesModal.tsx
-│   ├── StatsModal.tsx
-│   └── dashboard/                    # dashboard-specific layout pieces
-│       ├── Header.tsx
-│       ├── RelationshipCards.tsx     # Allies / Rivals / Neutral
-│       ├── MetricsCard.tsx
-│       ├── WorldEventsCard.tsx
-│       ├── GdpHistoryCard.tsx
-│       ├── Footer.tsx
-│       └── DebugStrip.tsx
-└── lib/
-    ├── countries.ts                  # ~50 countries: flag emoji, ISO code, gov type
-    ├── format.ts                     # money/GDP/time formatting helpers
-    └── spacetimedb-server.ts         # SSR fetch helper
-```
+A Next.js + React 18 browser dashboard talks to a SpacetimeDB host over a single WebSocket. SpacetimeDB runs the TypeScript game module as a WebAssembly bundle; reducers (`claim_nation`, `propose_trade`, …) run transactionally inside the database. The UI subscribes to tables via `useTable(...)` hooks and re-renders on every change.
+
+The game currently ships with 26 seeded bot nations you can trade with as if they were real players. The RFC's LLM-driven AI nations (via a Node orchestrator) are deferred to a future round.
+
+### Tables
+
+| Table | Purpose |
+|---|---|
+| `world` | Singleton: `year`, `status` (Lobby/Running/Ended) |
+| `nation` | Per-player state: money, goods, energy, education, tax_rate, health, gdp |
+| `trade_offer` | Pending offers between two identities; auto-resolved on response |
+| `trust` | Per-pair trust value, keyed by `(from_owner, to_owner)` |
+| `world_event` | Append-only log for the live events feed |
+| `gdp_history` | Per-nation GDP samples at each year tick |
 
 ## Running locally
 
-You need [SpacetimeDB CLI](https://spacetimedb.com/install) and Node 18+.
+Requires the [SpacetimeDB CLI](https://spacetimedb.com/install) and Node 18+.
 
 ```bash
-# 1. start the local SpacetimeDB host (one terminal)
-spacetime start
-
-# 2. install + run the dev stack (auto-publishes module on save)
+spacetime start          # start the local host (one terminal)
 pnpm install
-spacetime dev
-
-# 3. visit
+spacetime dev            # runs the dev stack, auto-publishes on save
 open http://localhost:3001
 ```
 
-> Next.js runs on **3001** (not the default 3000) because SpacetimeDB already listens on 3000 — they used to collide because Spacetime binds IPv4 and Next.js IPv6 on the same port number, leaving the route the browser hits non-deterministic.
-
-Append `?debug=1` to see WebSocket / table-row diagnostics at the top of the dashboard.
+Next.js runs on 3001 because SpacetimeDB already uses 3000. Append `?debug=1` to the URL for WebSocket and table-row diagnostics.
 
 ### Useful CLI
 
@@ -128,44 +72,24 @@ spacetime sql caravan-rsdsx "select name, gdp from nation"
 # follow events live
 spacetime logs caravan-rsdsx -f
 
-# wipe + reseed (also doable from the in-game Reset button in the footer)
+# wipe and reseed (also available from the in-game Reset button)
 spacetime publish --module-path spacetimedb --server local caravan-rsdsx --delete-data --yes
 ```
 
-## What's seeded
-
-26 real countries with starting stats roughly scaled to their real-world economies:
-
-USA · China · Germany · Japan · India · United Kingdom · France · Italy · Brazil · Canada · **Pakistan** · Bangladesh · South Korea · Indonesia · Vietnam · Saudi Arabia · Turkey · Iran · Israel · Russia · Spain · Poland · Mexico · Nigeria · South Africa · Australia
-
-The country registry in `lib/countries.ts` knows ~50 countries (flag + ISO + government type + world-map geo name); add more entries to either the registry or the `SEED_NATIONS` array on the server to grow the roster.
-
 ## How to play
 
-1. Open `localhost:3000` in two browser windows (use one regular + one incognito to get two SpacetimeDB identities).
-2. Each window: type a country name in the Actions panel (e.g. "USA" or "Pakistan") and click Claim. Claiming an existing seed name **takes over** that seat — you inherit its starting position.
-3. One window clicks **Start the run**. World goes from `Lobby` to `Running`.
-4. From the Actions buttons in the top-right, open the modals:
-   - **Trade** → propose offers to other nations; approve/reject incoming offers.
-   - **Education** / **Healthcare** → spend money to raise that score (each 100 money → +1.0%).
-   - **Taxes** → drag a slider, watch the GDP-drag preview update.
-5. Each action ticks the year by 0.25. Watch the GDP-over-time card grow. The map recolors as your trust shifts.
-6. When year 100 lands, the winner banner appears across the top.
+1. Open the app in two browser windows — one regular, one incognito — to get two SpacetimeDB identities.
+2. In each window, type a country name in the Actions panel and click Claim. Claiming a seeded name takes over that seat and inherits its starting position.
+3. One window clicks Start the run to move the world from Lobby to Running.
+4. Use the Actions buttons to open the Trade, Education, Healthcare, and Taxes modals.
+5. Each action advances the year by 0.25. Watch the GDP chart grow and the map recolor as trust shifts.
+6. At year 100, the winner banner appears.
 
-## Status of the RFC
+## Seeded countries
 
-| RFC feature | Status |
-|---|---|
-| Money supply seeded from real economies | ✅ Done (26 seeds) |
-| Action → year advances by 0.25 | ✅ Done |
-| Trade offers between identities | ✅ Done |
-| Trust ± deltas on accept/reject | ✅ Done |
-| GDP formula `base × (1+edu) − tax_drag + resource_value` | ✅ Done (plus health multiplier) |
-| Tick reducer per integer-year crossing | ✅ Done |
-| Live dashboard | ✅ Done (header, world map, leaderboards, GDP chart, event feed) |
-| World map colored by relationship | ✅ Done (react-simple-maps + world-atlas) |
-| AI nations driven by LLM via Node orchestrator | ⏳ Deferred |
-| Per-country LLM prompts | ⏳ Deferred (registry has the slot ready) |
+USA, China, Germany, Japan, India, United Kingdom, France, Italy, Brazil, Canada, Pakistan, Bangladesh, South Korea, Indonesia, Vietnam, Saudi Arabia, Turkey, Iran, Israel, Russia, Spain, Poland, Mexico, Nigeria, South Africa, Australia.
+
+The registry in `lib/countries.ts` knows ~50 countries (flag, ISO code, government type, map geo name). Add entries there or to the `SEED_NATIONS` array on the server to grow the roster.
 
 ## License
 
