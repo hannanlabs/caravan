@@ -957,13 +957,10 @@ function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount, hi
   }
   const gdp = formatGdp(myNation.gdp);
   return (
-    <Modal open={open} onClose={onClose} title={`${flagFor(myNation.name)} ${myNation.name} — Live Stats`} width={560}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
-        <div>
-          <span className="gdp-headline">${gdp.value}</span>
-          <span className="gdp-unit">{gdp.unit}</span>
-        </div>
-        <Sparkline history={history} width={180} height={40} />
+    <Modal open={open} onClose={onClose} title={`${flagFor(myNation.name)} ${myNation.name}: Live Stats`} width={560}>
+      <div>
+        <span className="gdp-headline">${gdp.value}</span>
+        <span className="gdp-unit">{gdp.unit}</span>
       </div>
       <div className="gdp-substats">
         <Stat label="Goods" value={myNation.goods.toString()} foot="raw units" />
