@@ -10,18 +10,10 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-import {
-  Resource,
-} from "./types";
-
 export default {
   to: __t.identity(),
-  get giveResource() {
-    return Resource;
-  },
+  giveCommodity: __t.string(),
   giveAmount: __t.u64(),
-  get getResource() {
-    return Resource;
-  },
+  getCommodity: __t.string(),
   getAmount: __t.u64(),
 };

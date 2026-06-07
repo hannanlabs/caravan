@@ -2,6 +2,7 @@
 
 import type { WorldData } from '../../lib/spacetimedb-server';
 import { BrandMark } from '../BrandMark';
+import { IconForward } from '../icons';
 
 export const MAX_YEAR = 100;
 
@@ -10,9 +11,11 @@ interface TopBarProps {
   status: string;
   nationCount: number;
   isActive: boolean;
+  canAdvance: boolean;
+  onAdvanceYear: () => void;
 }
 
-export function TopBar({ world, status, nationCount, isActive }: TopBarProps) {
+export function TopBar({ world, status, nationCount, isActive, canAdvance, onAdvanceYear }: TopBarProps) {
   let pillClass = 'pill-off';
   let pillText = 'Offline';
   if (isActive) {
@@ -23,7 +26,11 @@ export function TopBar({ world, status, nationCount, isActive }: TopBarProps) {
 
   return (
     <div className="topbar">
-      <span aria-hidden />
+      <div style={{ justifySelf: 'start' }}>
+        <button className="btn btn-primary btn-sm" disabled={!canAdvance} onClick={onAdvanceYear}>
+          <IconForward size={15} />Advance year +1
+        </button>
+      </div>
       <div className="brand">
         <BrandMark priority size={38} />
         <span className="brand-title">Caravan</span>

@@ -6,25 +6,27 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AdvanceYearReducer from "../advance_year_reducer";
+import BuildAssetReducer from "../build_asset_reducer";
+import BuyCommodityReducer from "../buy_commodity_reducer";
 import ClaimNationReducer from "../claim_nation_reducer";
-import InvestEducationReducer from "../invest_education_reducer";
-import InvestHealthcareReducer from "../invest_healthcare_reducer";
-import InvestMilitaryReducer from "../invest_military_reducer";
-import InvestTechnologyReducer from "../invest_technology_reducer";
 import ProposeTradeReducer from "../propose_trade_reducer";
 import ResetGameReducer from "../reset_game_reducer";
 import RespondTradeReducer from "../respond_trade_reducer";
+import SellCommodityReducer from "../sell_commodity_reducer";
 import SetTaxReducer from "../set_tax_reducer";
 import StartRunReducer from "../start_run_reducer";
+import TriggerMarketShockReducer from "../trigger_market_shock_reducer";
 
+export type AdvanceYearParams = __Infer<typeof AdvanceYearReducer>;
+export type BuildAssetParams = __Infer<typeof BuildAssetReducer>;
+export type BuyCommodityParams = __Infer<typeof BuyCommodityReducer>;
 export type ClaimNationParams = __Infer<typeof ClaimNationReducer>;
-export type InvestEducationParams = __Infer<typeof InvestEducationReducer>;
-export type InvestHealthcareParams = __Infer<typeof InvestHealthcareReducer>;
-export type InvestMilitaryParams = __Infer<typeof InvestMilitaryReducer>;
-export type InvestTechnologyParams = __Infer<typeof InvestTechnologyReducer>;
 export type ProposeTradeParams = __Infer<typeof ProposeTradeReducer>;
 export type ResetGameParams = __Infer<typeof ResetGameReducer>;
 export type RespondTradeParams = __Infer<typeof RespondTradeReducer>;
+export type SellCommodityParams = __Infer<typeof SellCommodityReducer>;
 export type SetTaxParams = __Infer<typeof SetTaxReducer>;
 export type StartRunParams = __Infer<typeof StartRunReducer>;
+export type TriggerMarketShockParams = __Infer<typeof TriggerMarketShockReducer>;
 

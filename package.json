@@ -11,7 +11,8 @@
     "generate": "pnpm --dir spacetimedb install && cargo run -p gen-bindings -- --out-dir src/module_bindings --module-path spacetimedb && prettier --write src/module_bindings",
     "spacetime:generate": "spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb",
     "spacetime:publish:local": "spacetime publish --module-path spacetimedb --server local",
-    "spacetime:publish": "spacetime publish --module-path spacetimedb --server maincloud"
+    "spacetime:publish": "spacetime publish --module-path spacetimedb --server maincloud",
+    "test": "vitest run"
   },
   "dependencies": {
     "d3-geo": "^3.1.1",
@@ -27,6 +28,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/react-simple-maps": "^3.0.6",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.2",
+    "vitest": "^2.1.9"
   }
 }

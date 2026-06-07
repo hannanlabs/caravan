@@ -26,6 +26,27 @@ export function formatGdpShort(g: number): string {
   return `$${g.toFixed(0)}M`;
 }
 
+// Money is denominated in millions ($M). Always show the magnitude unit, e.g. "$58.1M", "$6.0B".
+export function formatPrice(n: number): string {
+  if (!Number.isFinite(n)) return '$0M';
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}T`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(2)}B`;
+  if (n >= 100) return `$${n.toFixed(0)}M`;
+  return `$${n.toFixed(1)}M`;
+}
+
+export function formatPct(n: number): string {
+  if (!Number.isFinite(n)) return '0.0%';
+  return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+}
+
+export function formatAmount(n: number | bigint): string {
+  const v = typeof n === 'bigint' ? Number(n) : n;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
+  return `${Math.round(v)}`;
+}
+
 export function rankSuffix(n: number): string {
   if (n % 100 >= 11 && n % 100 <= 13) return 'th';
   switch (n % 10) {

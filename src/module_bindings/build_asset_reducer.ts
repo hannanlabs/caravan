@@ -11,5 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  amount: __t.u64(),
+  typeKey: __t.string(),
 };

@@ -1,5 +1,6 @@
 export type ActionModal =
   | 'trade'
+  | 'market'
   | 'education'
   | 'healthcare'
   | 'taxes'

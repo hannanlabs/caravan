@@ -1,10 +1,10 @@
 'use client';
 
 import { metaFor, flagFor, allCountryNames } from '../../lib/countries';
-import { formatGdpShort, formatMoneyShort } from '../../lib/format';
+import { formatGdpShort } from '../../lib/format';
 import type { NationData } from '../../lib/spacetimedb-server';
 import type { ActionModal } from './types';
-import { IconChart, IconExchange, IconBook, IconPulse, IconBank, IconPlay, IconShield, IconCpu } from '../icons';
+import { IconChart, IconExchange, IconBook, IconPulse, IconBank, IconPlay, IconShield, IconCpu, IconMarket } from '../icons';
 
 interface HeaderProps {
   isActive: boolean;
@@ -15,23 +15,28 @@ interface HeaderProps {
   onClaim: (name: string) => void;
   onStart: () => void;
   onOpenModal: (m: ActionModal) => void;
-  onViewStats: () => void;
   incomingCount: number;
+  holdingsValue: number;
 }
 
 export function Header(props: HeaderProps) {
-  const { myNation, isActive, onViewStats } = props;
+  const { myNation, onOpenModal, holdingsValue } = props;
 
   return (
     <div className="strip">
-      <IdentityCard myNation={myNation} isActive={isActive} />
+      <IdentityCard myNation={myNation} isActive={props.isActive} holdingsValue={holdingsValue} />
       <div className="card">
         <div className="card-pad" style={{ paddingBottom: 4 }}>
           <div className="card-title">
             <span className="ct-label">Actions</span>
-            <button className="btn btn-ghost btn-sm" disabled={!myNation} onClick={onViewStats}>
-              <IconChart size={15} />Live stats
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-ghost btn-sm" disabled={!myNation} onClick={() => onOpenModal('market')}>
+                <IconMarket size={15} />Market
+              </button>
+              <button className="btn btn-ghost btn-sm" disabled={!myNation} onClick={() => onOpenModal('stats')}>
+                <IconChart size={15} />Live stats
+              </button>
+            </div>
           </div>
         </div>
         <ActionsBody {...props} />
@@ -40,7 +45,7 @@ export function Header(props: HeaderProps) {
   );
 }
 
-function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive: boolean }) {
+function IdentityCard({ myNation, isActive, holdingsValue }: { myNation?: NationData; isActive: boolean; holdingsValue: number }) {
   const meta = myNation ? metaFor(myNation.name) : null;
   const onlinePill = (
     <span className={`pill ${isActive ? 'pill-live' : 'pill-off'}`} style={{ height: 22 }}>
@@ -64,9 +69,9 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
 
   const stats = [
     { l: 'GDP', v: formatGdpShort(myNation.gdp) },
-    { l: 'Goods', v: myNation.goods.toString() },
-    { l: 'Energy', v: myNation.energy.toString() },
+    { l: 'Holdings', v: formatGdpShort(holdingsValue) },
     { l: 'Tax', v: `${Math.round(myNation.taxRate * 100)}%` },
+    { l: 'Tech', v: `${Math.round(myNation.technology * 100)}` },
   ];
 
   return (
@@ -79,7 +84,7 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
         </div>
         <div className="id-cash">
           <span className="eyebrow">Cash reserves</span>
-          <div className="cash-val tnum">{formatMoneyShort(myNation.money)}</div>
+          <div className="cash-val tnum">{formatGdpShort(Number(myNation.money))}</div>
         </div>
       </div>
       <div className="id-stats">
@@ -97,39 +102,25 @@ function IdentityCard({ myNation, isActive }: { myNation?: NationData; isActive:
 function ActionsBody(props: HeaderProps) {
   const { isActive, myNation, status, nameInput, setNameInput, onClaim, onStart, onOpenModal, incomingCount } = props;
 
-  // Lobby, no nation yet → claim form (pick a country from the list).
   if (!myNation && status === 'Lobby') {
     const countries = allCountryNames().slice().sort((a, b) => a.localeCompare(b));
     return (
       <div className="pregame-panel">
-        <select
-          className="select"
-          value={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-          aria-label="Choose a country to claim"
-        >
+        <select className="select" value={nameInput} onChange={(e) => setNameInput(e.target.value)} aria-label="Choose a country to claim">
           <option value="">Select a country…</option>
-          {countries.map((name) => (
-            <option key={name} value={name}>{flagFor(name)}  {name}</option>
-          ))}
+          {countries.map((name) => <option key={name} value={name}>{flagFor(name)}  {name}</option>)}
         </select>
-        <button
-          className="btn btn-primary btn-block"
-          disabled={!isActive || !nameInput}
-          onClick={() => { if (nameInput) { onClaim(nameInput); setNameInput(''); } }}
-        >
+        <button className="btn btn-primary btn-block" disabled={!isActive || !nameInput} onClick={() => { if (nameInput) { onClaim(nameInput); setNameInput(''); } }}>
           Claim nation
         </button>
       </div>
     );
   }
 
-  // No nation, game already underway → spectator.
   if (!myNation) {
     return <div className="pregame-panel"><div className="pg-empty">Game is {status.toLowerCase()}. Spectating only.</div></div>;
   }
 
-  // Have a nation, still in lobby → start.
   if (status === 'Lobby') {
     return (
       <div className="pregame-panel">
@@ -141,7 +132,6 @@ function ActionsBody(props: HeaderProps) {
     );
   }
 
-  // Ended.
   if (status === 'Ended') {
     return (
       <div className="pregame-panel">
@@ -150,7 +140,6 @@ function ActionsBody(props: HeaderProps) {
     );
   }
 
-  // Running → action grid.
   const items: { id: ActionModal; icon: React.ReactNode; label: string; badge?: number }[] = [
     { id: 'trade', icon: <IconExchange />, label: 'Trade', badge: incomingCount },
     { id: 'education', icon: <IconBook />, label: 'Education' },
@@ -165,12 +154,7 @@ function ActionsBody(props: HeaderProps) {
       {items.map((it) => {
         const notice = it.id === 'trade' && (it.badge ?? 0) > 0;
         return (
-          <button
-            key={it.id}
-            className={`action${notice ? ' notice' : ''}`}
-            disabled={!isActive}
-            onClick={() => onOpenModal(it.id)}
-          >
+          <button key={it.id} className={`action${notice ? ' notice' : ''}`} disabled={!isActive} onClick={() => onOpenModal(it.id)}>
             {notice && <span className="a-badge">{it.badge}</span>}
             <div className="a-icon">{it.icon}</div>
             <div className="a-label">{it.label}</div>

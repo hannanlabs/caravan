@@ -6,13 +6,13 @@ import { Empty, Field } from './shared';
 import { IconExchange, IconCheck, IconX, IconArrowRight } from './icons';
 import { flagFor } from '../lib/countries';
 import { relativeTime } from '../lib/format';
+import { COMMODITIES, COMMODITY_KEYS } from '../spacetimedb/src/market';
 import type { NationData } from '../lib/spacetimedb-server';
-import type { Resource } from '../src/module_bindings/types';
+import type { Identity } from 'spacetimedb';
 import TradeOfferRow from '../src/module_bindings/trade_offer_table';
 import type { Infer } from 'spacetimedb';
 
 type TradeOfferData = Infer<typeof TradeOfferRow>;
-type ResTag = 'Goods' | 'Energy';
 
 export interface TradeModalProps {
   open: boolean;
@@ -22,21 +22,17 @@ export interface TradeModalProps {
   isActive: boolean;
   incoming: TradeOfferData[];
   outgoing: TradeOfferData[];
-  onPropose: (args: {
-    to: NationData['owner'];
-    giveResource: Resource;
-    giveAmount: bigint;
-    getResource: Resource;
-    getAmount: bigint;
-  }) => void;
+  stock: Record<string, number>;
+  onPropose: (args: { to: Identity; giveCommodity: string; giveAmount: bigint; getCommodity: string; getAmount: bigint }) => void;
   onApprove: (id: bigint) => void;
   onReject: (id: bigint) => void;
 }
 
 type Tab = 'incoming' | 'propose' | 'pending';
+const label = (c: string) => COMMODITIES[c as keyof typeof COMMODITIES]?.label ?? c;
 
 export function TradeModal(props: TradeModalProps) {
-  const { open, onClose, myNation, nations, isActive, incoming, outgoing, onPropose, onApprove, onReject } = props;
+  const { open, onClose, myNation, nations, isActive, incoming, outgoing, stock, onPropose, onApprove, onReject } = props;
   const [tab, setTab] = useState<Tab>('incoming');
   if (!open) return null;
 
@@ -53,20 +49,13 @@ export function TradeModal(props: TradeModalProps) {
     { id: 'propose', label: 'Propose' },
     { id: 'pending', label: 'Pending', count: outgoing.length },
   ];
-
   const nameOf = (hex: string) => nations.find((n) => n.owner.toHexString() === hex)?.name ?? 'Unknown';
 
   return (
-    <Modal open={open} onClose={onClose} icon={<IconExchange />} title="Diplomacy & trade" sub="Negotiate resource exchanges" width={600}>
+    <Modal open={open} onClose={onClose} icon={<IconExchange />} title="Diplomacy & trade" sub="Swap commodities with other nations" width={600}>
       <div className="segmented">
         {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className="seg"
-            aria-pressed={tab === t.id}
-            onClick={() => setTab(t.id)}
-          >
+          <button key={t.id} type="button" className="seg" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>
             {t.label}
             {t.count != null && t.count > 0 && <span className="seg-count">{t.count}</span>}
           </button>
@@ -93,7 +82,7 @@ export function TradeModal(props: TradeModalProps) {
       )}
 
       {tab === 'propose' && (
-        <ProposeForm myNation={myNation} nations={nations} isActive={isActive} onPropose={onPropose} onSent={() => setTab('pending')} />
+        <ProposeForm myNation={myNation} nations={nations} isActive={isActive} stock={stock} onPropose={onPropose} onSent={() => setTab('pending')} />
       )}
 
       {tab === 'pending' && (
@@ -107,7 +96,7 @@ export function TradeModal(props: TradeModalProps) {
                 <span className="offer-flag" style={{ width: 26, height: 26, fontSize: 15 }}>{flagFor(nameOf(o.toOwner.toHexString()))}</span>
                 <span style={{ fontWeight: 600 }}>{nameOf(o.toOwner.toHexString())}</span>
                 <span style={{ flex: 1, color: 'var(--ink-3)', fontSize: 12.5 }} className="tnum">
-                  &nbsp;give {o.giveAmount.toString()} {o.giveResource.tag.toLowerCase()} · get {o.getAmount.toString()} {o.getResource.tag.toLowerCase()}
+                  &nbsp;give {o.giveAmount.toString()} {label(o.giveCommodity)} · get {o.getAmount.toString()} {label(o.getCommodity)}
                 </span>
                 <span className="chip chip-neutral">Awaiting</span>
               </div>
@@ -119,17 +108,9 @@ export function TradeModal(props: TradeModalProps) {
   );
 }
 
-function OfferCard({
-  offer, fromName, isActive, onApprove, onReject,
-}: {
-  offer: TradeOfferData;
-  fromName: string;
-  isActive: boolean;
-  onApprove: () => void;
-  onReject: () => void;
+function OfferCard({ offer, fromName, isActive, onApprove, onReject }: {
+  offer: TradeOfferData; fromName: string; isActive: boolean; onApprove: () => void; onReject: () => void;
 }) {
-  // Incoming offer: the proposer gives `giveAmount/giveResource` and wants `getAmount/getResource`.
-  // From my perspective I RECEIVE what they give, and I GIVE what they want.
   return (
     <div className="offer">
       <div className="offer-top">
@@ -144,13 +125,13 @@ function OfferCard({
         <div className="leg get">
           <div className="leg-label">You receive</div>
           <div className="leg-amt tnum">+{offer.giveAmount.toString()}</div>
-          <div className="leg-res">{offer.giveResource.tag.toLowerCase()}</div>
+          <div className="leg-res">{label(offer.giveCommodity)}</div>
         </div>
         <div className="exchange-arrow"><IconExchange size={18} /></div>
         <div className="leg give">
           <div className="leg-label">You give</div>
           <div className="leg-amt tnum">&minus;{offer.getAmount.toString()}</div>
-          <div className="leg-res">{offer.getResource.tag.toLowerCase()}</div>
+          <div className="leg-res">{label(offer.getCommodity)}</div>
         </div>
       </div>
       <div className="offer-actions">
@@ -161,20 +142,15 @@ function OfferCard({
   );
 }
 
-function ProposeForm({
-  myNation, nations, isActive, onPropose, onSent,
-}: {
-  myNation: NationData;
-  nations: readonly NationData[];
-  isActive: boolean;
-  onPropose: TradeModalProps['onPropose'];
-  onSent: () => void;
+function ProposeForm({ myNation, nations, isActive, stock, onPropose, onSent }: {
+  myNation: NationData; nations: readonly NationData[]; isActive: boolean; stock: Record<string, number>;
+  onPropose: TradeModalProps['onPropose']; onSent: () => void;
 }) {
   const others = nations.filter((n) => n.owner.toHexString() !== myNation.owner.toHexString());
   const [targetHex, setTargetHex] = useState('');
-  const [giveRes, setGiveRes] = useState<ResTag>('Goods');
+  const [giveC, setGiveC] = useState<string>('oil');
   const [giveAmt, setGiveAmt] = useState('10');
-  const [getRes, setGetRes] = useState<ResTag>('Energy');
+  const [getC, setGetC] = useState<string>('grain');
   const [getAmt, setGetAmt] = useState('10');
 
   useEffect(() => {
@@ -184,7 +160,6 @@ function ProposeForm({
   }, [others.map((n) => n.owner.toHexString()).join(',')]);
 
   if (others.length === 0) return <Empty>No other nations to trade with yet.</Empty>;
-
   const target = others.find((n) => n.owner.toHexString() === targetHex);
 
   const submit = () => {
@@ -192,13 +167,7 @@ function ProposeForm({
     const g = BigInt(giveAmt || '0');
     const r = BigInt(getAmt || '0');
     if (g <= 0n || r <= 0n) return;
-    onPropose({
-      to: target.owner,
-      giveResource: { tag: giveRes } as Resource,
-      giveAmount: g,
-      getResource: { tag: getRes } as Resource,
-      getAmount: r,
-    });
+    onPropose({ to: target.owner, giveCommodity: giveC, giveAmount: g, getCommodity: getC, getAmount: r });
     onSent();
   };
 
@@ -206,35 +175,30 @@ function ProposeForm({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Field label="Trade partner">
         <select className="select" value={targetHex} onChange={(e) => setTargetHex(e.target.value)}>
-          {others.map((n) => (
-            <option key={n.owner.toHexString()} value={n.owner.toHexString()}>{flagFor(n.name)}  {n.name}</option>
-          ))}
+          {others.map((n) => <option key={n.owner.toHexString()} value={n.owner.toHexString()}>{flagFor(n.name)}  {n.name}</option>)}
         </select>
       </Field>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span className="leg-label" style={{ color: 'var(--neg)' }}>You give</span>
-          <select className="select" value={giveRes} onChange={(e) => setGiveRes(e.target.value as ResTag)}>
-            <option value="Goods">Goods</option>
-            <option value="Energy">Energy</option>
+          <span className="leg-label" style={{ color: 'var(--neg)' }}>You give · have {stock[giveC] ?? 0}</span>
+          <select className="select" value={giveC} onChange={(e) => setGiveC(e.target.value)}>
+            {COMMODITY_KEYS.map((c) => <option key={c} value={c}>{COMMODITIES[c].label}</option>)}
           </select>
           <input className="input tnum" type="number" min={1} value={giveAmt} onChange={(e) => setGiveAmt(e.target.value)} />
         </div>
         <div style={{ color: 'var(--ink-4)', paddingTop: 28 }}><IconExchange size={20} /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span className="leg-label" style={{ color: 'var(--pos)' }}>You receive</span>
-          <select className="select" value={getRes} onChange={(e) => setGetRes(e.target.value as ResTag)}>
-            <option value="Energy">Energy</option>
-            <option value="Goods">Goods</option>
+          <select className="select" value={getC} onChange={(e) => setGetC(e.target.value)}>
+            {COMMODITY_KEYS.map((c) => <option key={c} value={c}>{COMMODITIES[c].label}</option>)}
           </select>
           <input className="input tnum" type="number" min={1} value={getAmt} onChange={(e) => setGetAmt(e.target.value)} />
         </div>
       </div>
 
       <button className="btn btn-primary btn-block btn-lg" disabled={!isActive || !target} onClick={submit}>
-        <IconArrowRight size={16} />
-        <span>Send offer{target ? ` to ${target.name}` : ''}</span>
+        <IconArrowRight size={16} /><span>Send offer{target ? ` to ${target.name}` : ''}</span>
       </button>
     </div>
   );

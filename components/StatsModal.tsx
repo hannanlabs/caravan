@@ -4,7 +4,8 @@ import { Modal } from './Modal';
 import { Block, Empty } from './shared';
 import { IconChart } from './icons';
 import { flagFor, metaFor } from '../lib/countries';
-import { formatGdp, formatGdpShort, formatMoneyShort, rankSuffix } from '../lib/format';
+import { formatGdp, formatGdpShort, formatMoneyShort, rankSuffix, formatAmount } from '../lib/format';
+import { COMMODITIES, COMMODITY_KEYS } from '../spacetimedb/src/market';
 import type { NationData } from '../lib/spacetimedb-server';
 
 interface StatsModalProps {
@@ -14,11 +15,13 @@ interface StatsModalProps {
   rank: number;
   worldShare: number;
   nationCount: number;
+  stock: Record<string, number>;
+  holdingsValue: number;
+  assetCount: number;
 }
 
-export function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount }: StatsModalProps) {
+export function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount, stock, holdingsValue, assetCount }: StatsModalProps) {
   if (!open) return null;
-
   if (!myNation) {
     return (
       <Modal open={open} onClose={onClose} icon={<IconChart />} title="Live statistics" width={580}>
@@ -29,32 +32,22 @@ export function StatsModal({ open, onClose, myNation, rank, worldShare, nationCo
 
   const gdp = formatGdp(myNation.gdp);
   const meta = metaFor(myNation.name);
-
-  const cells: { label: string; value: string; foot: string }[] = [
+  const cells = [
     { label: 'Cash reserves', value: formatMoneyShort(myNation.money), foot: 'Liquid funds' },
-    { label: 'Goods', value: myNation.goods.toString(), foot: 'Output / yr' },
-    { label: 'Energy', value: myNation.energy.toString(), foot: 'Output / yr' },
+    { label: 'Holdings value', value: formatGdpShort(holdingsValue), foot: 'Commodities @ market' },
+    { label: 'Assets built', value: String(assetCount), foot: 'Capital' },
     { label: 'Tax rate', value: `${Math.round(myNation.taxRate * 100)}%`, foot: 'Policy' },
-    { label: 'Education', value: `${(myNation.education * 100).toFixed(1)}%`, foot: 'Index' },
-    { label: 'Health', value: `${(myNation.health * 100).toFixed(1)}%`, foot: 'Index' },
+    { label: 'Education', value: `${(myNation.education * 100).toFixed(0)}`, foot: 'Index' },
+    { label: 'Health', value: `${(myNation.health * 100).toFixed(0)}`, foot: 'Index' },
   ];
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      icon={<IconChart />}
-      title="Live statistics"
-      sub={`${flagFor(myNation.name)} ${myNation.name} · ${meta.govType}`}
-      width={580}
-    >
+    <Modal open={open} onClose={onClose} icon={<IconChart />} title="Live statistics" sub={`${flagFor(myNation.name)} ${myNation.name} · ${meta.govType}`} width={580}>
       <Block label="Gross domestic product">
         <div className="gauge-row">
           <div className="display" style={{ fontSize: 50 }}>
             ${gdp.value}
-            <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: 0, marginLeft: 8 }}>
-              {gdp.unit}
-            </span>
+            <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: 0, marginLeft: 8 }}>{gdp.unit}</span>
           </div>
         </div>
       </Block>
@@ -87,6 +80,17 @@ export function StatsModal({ open, onClose, myNation, rank, worldShare, nationCo
           ))}
         </div>
       </div>
+
+      <Block label="Stockpiles">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {COMMODITY_KEYS.map((c) => (
+            <div key={c} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, padding: '4px 0' }}>
+              <span style={{ color: 'var(--ink-2)' }}>{COMMODITIES[c].label}</span>
+              <span className="tnum" style={{ fontWeight: 700 }}>{formatAmount(stock[c] ?? 0)}</span>
+            </div>
+          ))}
+        </div>
+      </Block>
     </Modal>
   );
 }

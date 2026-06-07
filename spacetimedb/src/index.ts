@@ -7,16 +7,41 @@ import {
   type ReducerCtx,
 } from 'spacetimedb/server';
 import { Identity } from 'spacetimedb';
+import {
+  COMMODITY_KEYS,
+  COMMODITIES,
+  ASSET_BY_KEY,
+  productionFor,
+  startingStockpile,
+  supplyDemandMultiplier,
+  computeScarcity,
+  scarcityMultiplier,
+  computeVolatility,
+  volatilityMultiplier,
+  eventActive,
+  computeTargetPrice,
+  smoothPrice,
+  clampPrice,
+  priceImpact,
+  decayVolume,
+  costOf,
+  canAfford,
+  canSell,
+  canBuildAsset,
+  aggregateTailwinds,
+  taxHarvest,
+  consumptionFor,
+  shortagePenalty,
+  computeGdpValue,
+  type CommodityKey,
+  type OwnedAsset,
+  type StatKey,
+} from './market';
 
 const WorldStatus = t.enum('WorldStatus', {
   lobby: t.unit(),
   running: t.unit(),
   ended: t.unit(),
-});
-
-const Resource = t.enum('Resource', {
-  goods: t.unit(),
-  energy: t.unit(),
 });
 
 const world = table(
@@ -28,14 +53,14 @@ const world = table(
   }
 );
 
+// Nation: money + the 0..1 development stats + score. Commodity holdings live in
+// the `stockpile` table (unified resource economy), not as columns here.
 const nation = table(
   { name: 'nation', public: true },
   {
     owner: t.identity().primaryKey(),
     name: t.string(),
     money: t.u64(),
-    goods: t.u64(),
-    energy: t.u64(),
     education: t.f32(),
     taxRate: t.f32(),
     health: t.f32(),
@@ -45,15 +70,100 @@ const nation = table(
   }
 );
 
+// Per-nation, per-commodity holdings.
+const stockpile = table(
+  {
+    name: 'stockpile',
+    public: true,
+    indexes: [
+      { accessor: 'by_owner', algorithm: 'btree', columns: ['owner'] },
+      { accessor: 'by_owner_commodity', algorithm: 'btree', columns: ['owner', 'commodity'] },
+    ],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    owner: t.identity(),
+    commodity: t.string(),
+    amount: t.u64(),
+  }
+);
+
+// Per-nation, per-commodity yearly production (geography endowment / comparative advantage).
+const production = table(
+  {
+    name: 'production',
+    public: true,
+    indexes: [{ accessor: 'by_owner', algorithm: 'btree', columns: ['owner'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    owner: t.identity(),
+    commodity: t.string(),
+    perYear: t.u64(),
+  }
+);
+
+// Live commodity market — one row per commodity.
+const commodityMarket = table(
+  { name: 'commodity_market', public: true },
+  {
+    commodity: t.string().primaryKey(),
+    basePrice: t.f64(),
+    currentPrice: t.f64(),
+    previousPrice: t.f64(),
+    priceChange: t.f64(),
+    priceChangePercent: t.f64(),
+    globalSupply: t.f64(),
+    globalDemand: t.f64(),
+    scarcityLevel: t.f32(),
+    recentBuyVolume: t.f64(),
+    recentSellVolume: t.f64(),
+    volatility: t.f32(),
+    eventMultiplier: t.f32(),
+    crisisUntilYear: t.f32(),
+    lastUpdatedYear: t.f32(),
+  }
+);
+
+// Bounded price history for sparklines / volatility.
+const marketHistory = table(
+  {
+    name: 'market_history',
+    public: true,
+    indexes: [{ accessor: 'by_commodity', algorithm: 'btree', columns: ['commodity'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    commodity: t.string(),
+    year: t.f32(),
+    price: t.f64(),
+  }
+);
+
+// Built capital assets (one row per purchase, for per-asset ramp).
+const asset = table(
+  {
+    name: 'asset',
+    public: true,
+    indexes: [{ accessor: 'by_owner', algorithm: 'btree', columns: ['owner'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    owner: t.identity(),
+    typeKey: t.string(),
+    builtYear: t.f32(),
+  }
+);
+
 const tradeOffer = table(
   { name: 'trade_offer', public: true },
   {
     id: t.u64().primaryKey().autoInc(),
     fromOwner: t.identity().index('btree'),
     toOwner: t.identity().index('btree'),
-    giveResource: Resource,
+    giveCommodity: t.string(),
     giveAmount: t.u64(),
-    getResource: Resource,
+    getCommodity: t.string(),
     getAmount: t.u64(),
     createdAt: t.timestamp(),
   }
@@ -63,9 +173,7 @@ const trust = table(
   {
     name: 'trust',
     public: true,
-    indexes: [
-      { accessor: 'by_pair', algorithm: 'btree', columns: ['fromOwner', 'toOwner'] },
-    ],
+    indexes: [{ accessor: 'by_pair', algorithm: 'btree', columns: ['fromOwner', 'toOwner'] }],
   },
   {
     id: t.u64().primaryKey().autoInc(),
@@ -100,22 +208,31 @@ const gdpHistory = table(
   }
 );
 
-const spacetimedb = schema({ world, nation, tradeOffer, trust, worldEvent, gdpHistory });
+const spacetimedb = schema({
+  world, nation, stockpile, production, commodityMarket, marketHistory, asset,
+  tradeOffer, trust, worldEvent, gdpHistory,
+});
 export default spacetimedb;
 
-const STARTING_MONEY = 1000n;
-const STARTING_GOODS = 100n;
-const STARTING_ENERGY = 100n;
+// ---------- constants ----------
+const STARTING_MONEY = 2000n;
 const STARTING_EDUCATION = 0.1;
 const STARTING_TAX = 0.1;
 const STARTING_HEALTH = 0.2;
 const STARTING_MILITARY = 0.1;
 const STARTING_TECHNOLOGY = 0.1;
-const TIME_STEP = 0.25;
 const GAME_END_YEAR = 100;
-const BASE_PRODUCTION = 50;
+const HISTORY_CAP = 80;
+const MAX_EVENTS = 200;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const toBig = (n: number) => BigInt(Math.max(0, Math.round(n)));
+
+function isCommodity(key: string): key is CommodityKey {
+  return (COMMODITY_KEYS as string[]).includes(key);
+}
 
 function getWorld(ctx: Ctx) {
   const w = ctx.db.world.id.find(0);
@@ -131,259 +248,230 @@ function requireMyNation(ctx: Ctx) {
 
 function requireRunning(ctx: Ctx) {
   const w = getWorld(ctx);
-  if (w.status.tag !== 'running') {
-    throw new Error(`world is ${w.status.tag}, not running`);
-  }
+  if (w.status.tag !== 'running') throw new Error(`world is ${w.status.tag}, not running`);
   return w;
 }
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-
-type ResourceVal = { tag: 'goods' } | { tag: 'energy' };
-
-function getResourceAmount(n: { goods: bigint; energy: bigint }, res: ResourceVal): bigint {
-  return res.tag === 'goods' ? n.goods : n.energy;
+// ---------- stockpile helpers ----------
+function findStockpile(ctx: Ctx, owner: Identity, commodity: string) {
+  return [...ctx.db.stockpile.by_owner_commodity.filter([owner, commodity])][0];
 }
 
-function withResource<T extends { goods: bigint; energy: bigint }>(
-  n: T,
-  res: ResourceVal,
-  amount: bigint
-): T {
-  return res.tag === 'goods' ? { ...n, goods: amount } : { ...n, energy: amount };
+function stockpileAmount(ctx: Ctx, owner: Identity, commodity: string): bigint {
+  return findStockpile(ctx, owner, commodity)?.amount ?? 0n;
 }
 
+function addStockpile(ctx: Ctx, owner: Identity, commodity: string, delta: bigint) {
+  const existing = findStockpile(ctx, owner, commodity);
+  if (existing) {
+    const next = existing.amount + delta;
+    ctx.db.stockpile.id.update({ ...existing, amount: next < 0n ? 0n : next });
+  } else if (delta > 0n) {
+    ctx.db.stockpile.insert({ id: 0n, owner, commodity, amount: delta });
+  }
+}
+
+function stockpileMapNumber(ctx: Ctx, owner: Identity): Record<CommodityKey, number> {
+  const out = {} as Record<CommodityKey, number>;
+  for (const c of COMMODITY_KEYS) out[c] = 0;
+  for (const row of ctx.db.stockpile.by_owner.filter(owner)) {
+    if (isCommodity(row.commodity)) out[row.commodity] = Number(row.amount);
+  }
+  return out;
+}
+
+function ownedAssets(ctx: Ctx, owner: Identity): OwnedAsset[] {
+  return [...ctx.db.asset.by_owner.filter(owner)].map((a) => ({ typeKey: a.typeKey, builtYear: a.builtYear }));
+}
+
+function marketPrice(ctx: Ctx, commodity: string): number {
+  return ctx.db.commodityMarket.commodity.find(commodity)?.currentPrice ?? COMMODITIES[commodity as CommodityKey]?.basePrice ?? 0;
+}
+
+// Live market value of a nation's holdings.
+function resourceValueOf(ctx: Ctx, owner: Identity): number {
+  let total = 0;
+  for (const row of ctx.db.stockpile.by_owner.filter(owner)) {
+    total += Number(row.amount) * marketPrice(ctx, row.commodity);
+  }
+  return total;
+}
+
+// Recompute and store a nation's GDP from stats + holdings value + asset tailwinds.
+function recomputeNationGdp(ctx: Ctx, n: ReturnType<typeof requireMyNation>): number {
+  const w = getWorld(ctx);
+  const tailwind = aggregateTailwinds(ownedAssets(ctx, n.owner), w.year);
+  const gdp = computeGdpValue(
+    { education: n.education, taxRate: n.taxRate, health: n.health, military: n.military, technology: n.technology },
+    resourceValueOf(ctx, n.owner),
+    tailwind.gdp
+  );
+  ctx.db.nation.owner.update({ ...n, gdp });
+  return gdp;
+}
+
+// ---------- trust ----------
 const TRUST_START = 50;
-const TRUST_MIN = 0;
-const TRUST_MAX = 100;
-
-function clampTrust(v: number): number {
-  return Math.max(TRUST_MIN, Math.min(TRUST_MAX, v));
-}
-
-function bumpTrust(ctx: Ctx, from: { toHexString(): string } & any, to: { toHexString(): string } & any, delta: number) {
+function clampTrust(v: number) { return Math.max(0, Math.min(100, v)); }
+function bumpTrust(ctx: Ctx, from: Identity, to: Identity, delta: number) {
   const existing = [...ctx.db.trust.by_pair.filter([from, to])][0];
   if (existing) {
-    ctx.db.trust.id.update({
-      ...existing,
-      value: clampTrust(existing.value + delta),
-    });
+    ctx.db.trust.id.update({ ...existing, value: clampTrust(existing.value + delta) });
   } else {
-    ctx.db.trust.insert({
-      id: 0n,
-      fromOwner: from,
-      toOwner: to,
-      value: clampTrust(TRUST_START + delta),
-    });
+    ctx.db.trust.insert({ id: 0n, fromOwner: from, toOwner: to, value: clampTrust(TRUST_START + delta) });
   }
 }
 
-function computeGdp(n: {
-  money: bigint; goods: bigint; energy: bigint; education: number; taxRate: number; health: number;
-  military: number; technology: number;
-}): number {
-  const base = 1000;
-  const humanCapital = 1 + n.education;
-  const healthFactor = 1 + n.health * 0.5;
-  const techFactor = 1 + n.technology * 0.5;     // technology compounds output
-  const militaryFactor = 1 + n.military * 0.15;   // military projects stability/power
-  const taxDrag = 1 - n.taxRate * 0.5;
-  const industry = Number(n.goods + n.energy) * 5;
-  const liquidity = Number(n.money) * 0.1;
-  return base * humanCapital * healthFactor * techFactor * militaryFactor * taxDrag + industry + liquidity;
-}
-
-function tickAll(ctx: Ctx) {
-  const w = getWorld(ctx);
-  const newYear = Math.floor(w.year + TIME_STEP);
-  for (const n of [...ctx.db.nation.iter()]) {
-    const growth = BASE_PRODUCTION * (1 + n.education) * (1 - n.taxRate);
-    const resourceBonus = (n.goods + n.energy) / 10n;
-    const newMoney = n.money + BigInt(Math.floor(growth)) + resourceBonus;
-    const updated = { ...n, money: newMoney };
-    const newGdp = computeGdp(updated);
-    ctx.db.nation.owner.update({ ...updated, gdp: newGdp });
-    ctx.db.gdpHistory.insert({ id: 0n, owner: n.owner, year: newYear, gdp: newGdp });
-  }
-}
-
-function recordBaseline(ctx: Ctx, owner: any, gdp: number) {
-  ctx.db.gdpHistory.insert({ id: 0n, owner, year: 0, gdp });
-}
-
-function advanceTime(ctx: Ctx) {
-  const w = getWorld(ctx);
-  const after = w.year + TIME_STEP;
-  if (Math.floor(after) > Math.floor(w.year)) {
-    tickAll(ctx);
-    logEvent(ctx, 'System', `Year ${Math.floor(after)} begins.`);
-  }
-  const status: typeof w.status =
-    after >= GAME_END_YEAR ? { tag: 'ended' } : w.status;
-  ctx.db.world.id.update({ ...w, year: after, status });
-  if (after >= GAME_END_YEAR && w.status.tag !== 'ended') {
-    // Winner = highest gdp at the end.
-    let winner: { name: string; gdp: number } | null = null;
-    for (const n of ctx.db.nation.iter()) {
-      if (!winner || n.gdp > winner.gdp) winner = { name: n.name, gdp: n.gdp };
-    }
-    if (winner) logEvent(ctx, winner.name, `🏆 ${winner.name} wins with GDP $${winner.gdp.toFixed(0)}M.`);
-  }
-}
-
-const MAX_EVENTS = 200;
-
+// ---------- events ----------
 function logEvent(ctx: Ctx, actorName: string, text: string) {
   const w = getWorld(ctx);
-  ctx.db.worldEvent.insert({
-    id: 0n,
-    year: w.year,
-    createdAt: ctx.timestamp,
-    actorName,
-    text,
-  });
-  // Cheap prune: if we have more than the cap, drop the oldest ids.
+  ctx.db.worldEvent.insert({ id: 0n, year: w.year, createdAt: ctx.timestamp, actorName, text });
   const all = [...ctx.db.worldEvent.iter()];
   if (all.length > MAX_EVENTS) {
     const sorted = all.sort((a, b) => (a.id < b.id ? -1 : 1));
-    const excess = sorted.length - MAX_EVENTS;
-    for (let i = 0; i < excess; i++) {
-      ctx.db.worldEvent.id.delete(sorted[i]!.id);
-    }
+    for (let i = 0; i < sorted.length - MAX_EVENTS; i++) ctx.db.worldEvent.id.delete(sorted[i]!.id);
   }
 }
 
-/* ---------- demo seeds ---------- */
-
-interface SeedNation {
-  hex: string;
-  name: string;
-  money: bigint;
-  goods: bigint;
-  energy: bigint;
-  education: number;
-  taxRate: number;
-  health: number;
-  military: number;
-  technology: number;
+// ---------- market seeding & history ----------
+function seedMarkets(ctx: Ctx) {
+  for (const c of COMMODITY_KEYS) {
+    const def = COMMODITIES[c];
+    ctx.db.commodityMarket.insert({
+      commodity: c,
+      basePrice: def.basePrice,
+      currentPrice: def.basePrice,
+      previousPrice: def.basePrice,
+      priceChange: 0,
+      priceChangePercent: 0,
+      globalSupply: def.baseSupply,
+      globalDemand: def.baseDemand,
+      scarcityLevel: 0,
+      recentBuyVolume: 0,
+      recentSellVolume: 0,
+      volatility: 0,
+      eventMultiplier: 1,
+      crisisUntilYear: 0,
+      lastUpdatedYear: 0,
+    });
+    ctx.db.marketHistory.insert({ id: 0n, commodity: c, year: 0, price: def.basePrice });
+  }
 }
 
-// Identity helper — bb{nn} is a synthetic hex prefix for seeded bots.
-// Identities are 32 bytes = 64 hex chars.
+function recentPrices(ctx: Ctx, commodity: string, limit = 12): number[] {
+  return [...ctx.db.marketHistory.by_commodity.filter(commodity)]
+    .sort((a, b) => a.year - b.year)
+    .slice(-limit)
+    .map((h) => h.price);
+}
+
+function pushHistory(ctx: Ctx, commodity: string, year: number, price: number) {
+  ctx.db.marketHistory.insert({ id: 0n, commodity, year, price });
+  const all = [...ctx.db.marketHistory.by_commodity.filter(commodity)];
+  if (all.length > HISTORY_CAP) {
+    const sorted = all.sort((a, b) => (a.id < b.id ? -1 : 1));
+    for (let i = 0; i < sorted.length - HISTORY_CAP; i++) ctx.db.marketHistory.id.delete(sorted[i]!.id);
+  }
+}
+
+// ---------- nation seeding ----------
+function seedNationEconomy(ctx: Ctx, owner: Identity, name: string) {
+  const prod = productionFor(name);
+  const stock = startingStockpile(name);
+  for (const c of COMMODITY_KEYS) {
+    ctx.db.production.insert({ id: 0n, owner, commodity: c, perYear: toBig(prod[c]) });
+    ctx.db.stockpile.insert({ id: 0n, owner, commodity: c, amount: toBig(stock[c]) });
+  }
+}
+
+function seedNationGdp(name: string, stats: { education: number; taxRate: number; health: number; military: number; technology: number }): number {
+  const stock = startingStockpile(name);
+  let resourceValue = 0;
+  for (const c of COMMODITY_KEYS) resourceValue += stock[c] * COMMODITIES[c].basePrice;
+  return computeGdpValue(stats, resourceValue, 0);
+}
+
+interface SeedNation {
+  hex: string; name: string; education: number; taxRate: number; health: number; military: number; technology: number;
+}
 const hex = (n: number) => ('bb' + n.toString(16).padStart(2, '0')).padEnd(64, '0');
 
 const SEED_NATIONS: SeedNation[] = [
-  // ----- Top economies -----
-  { hex: hex(1),  name: 'USA',            money: 23000n, goods: 800n,  energy: 700n,  education: 0.85, taxRate: 0.27, health: 0.80, military: 0.95, technology: 0.92 },
-  { hex: hex(2),  name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30, health: 0.70, military: 0.85, technology: 0.80 },
-  { hex: hex(3),  name: 'Germany',        money:  4200n, goods: 400n,  energy: 300n,  education: 0.88, taxRate: 0.38, health: 0.88, military: 0.55, technology: 0.88 },
-  { hex: hex(4),  name: 'Japan',          money:  5000n, goods: 400n,  energy: 300n,  education: 0.90, taxRate: 0.32, health: 0.95, military: 0.50, technology: 0.90 },
-  { hex: hex(5),  name: 'India',          money:  3700n, goods: 900n,  energy: 600n,  education: 0.45, taxRate: 0.18, health: 0.55, military: 0.65, technology: 0.55 },
-  { hex: hex(6),  name: 'United Kingdom', money:  3300n, goods: 250n,  energy: 200n,  education: 0.85, taxRate: 0.35, health: 0.85, military: 0.70, technology: 0.82 },
-  { hex: hex(7),  name: 'France',         money:  3000n, goods: 250n,  energy: 220n,  education: 0.82, taxRate: 0.45, health: 0.90, military: 0.72, technology: 0.80 },
-  { hex: hex(8),  name: 'Italy',          money:  2200n, goods: 220n,  energy: 180n,  education: 0.75, taxRate: 0.42, health: 0.82, military: 0.45, technology: 0.70 },
-  { hex: hex(9),  name: 'Brazil',         money:  2100n, goods: 600n,  energy: 500n,  education: 0.50, taxRate: 0.22, health: 0.65, military: 0.45, technology: 0.50 },
-  { hex: hex(10), name: 'Canada',         money:  2200n, goods: 300n,  energy: 600n,  education: 0.85, taxRate: 0.31, health: 0.88, military: 0.45, technology: 0.80 },
-
-  // ----- South Asia (Pakistan included!) -----
-  { hex: hex(11), name: 'Pakistan',       money:   340n, goods: 200n,  energy: 150n,  education: 0.40, taxRate: 0.13, health: 0.50, military: 0.60, technology: 0.35 },
-  { hex: hex(12), name: 'Bangladesh',     money:   450n, goods: 250n,  energy: 120n,  education: 0.42, taxRate: 0.12, health: 0.55, military: 0.35, technology: 0.35 },
-
-  // ----- East / SE Asia -----
-  { hex: hex(13), name: 'South Korea',    money:  1700n, goods: 300n,  energy: 250n,  education: 0.92, taxRate: 0.27, health: 0.90, military: 0.68, technology: 0.90 },
-  { hex: hex(14), name: 'Indonesia',      money:  1300n, goods: 500n,  energy: 400n,  education: 0.50, taxRate: 0.16, health: 0.60, military: 0.45, technology: 0.45 },
-  { hex: hex(15), name: 'Vietnam',        money:   430n, goods: 280n,  energy: 200n,  education: 0.55, taxRate: 0.20, health: 0.65, military: 0.50, technology: 0.45 },
-
-  // ----- Middle East -----
-  { hex: hex(16), name: 'Saudi Arabia',   money:  1100n, goods: 200n,  energy: 1500n, education: 0.60, taxRate: 0.05, health: 0.72, military: 0.55, technology: 0.55 },
-  { hex: hex(17), name: 'Turkey',         money:  1100n, goods: 350n,  energy: 250n,  education: 0.62, taxRate: 0.24, health: 0.68, military: 0.62, technology: 0.55 },
-  { hex: hex(18), name: 'Iran',           money:   400n, goods: 250n,  energy: 800n,  education: 0.55, taxRate: 0.15, health: 0.65, military: 0.58, technology: 0.45 },
-  { hex: hex(19), name: 'Israel',         money:   520n, goods: 150n,  energy: 100n,  education: 0.88, taxRate: 0.28, health: 0.87, military: 0.80, technology: 0.90 },
-
-  // ----- Europe (additional) -----
-  { hex: hex(20), name: 'Russia',         money:  2100n, goods: 600n,  energy: 1800n, education: 0.65, taxRate: 0.20, health: 0.62, military: 0.90, technology: 0.65 },
-  { hex: hex(21), name: 'Spain',          money:  1500n, goods: 200n,  energy: 180n,  education: 0.78, taxRate: 0.37, health: 0.85, military: 0.45, technology: 0.70 },
-  { hex: hex(22), name: 'Poland',         money:   680n, goods: 200n,  energy: 220n,  education: 0.75, taxRate: 0.34, health: 0.78, military: 0.55, technology: 0.62 },
-
-  // ----- Latin America -----
-  { hex: hex(23), name: 'Mexico',         money:  1700n, goods: 400n,  energy: 300n,  education: 0.55, taxRate: 0.17, health: 0.70, military: 0.38, technology: 0.50 },
-
-  // ----- Africa -----
-  { hex: hex(24), name: 'Nigeria',        money:   440n, goods: 200n,  energy: 350n,  education: 0.30, taxRate: 0.08, health: 0.40, military: 0.40, technology: 0.30 },
-  { hex: hex(25), name: 'South Africa',   money:   400n, goods: 200n,  energy: 250n,  education: 0.58, taxRate: 0.27, health: 0.60, military: 0.42, technology: 0.50 },
-
-  // ----- Oceania -----
-  { hex: hex(26), name: 'Australia',      money:  1700n, goods: 300n,  energy: 500n,  education: 0.85, taxRate: 0.30, health: 0.88, military: 0.55, technology: 0.80 },
+  { hex: hex(1),  name: 'USA',            education: 0.85, taxRate: 0.27, health: 0.80, military: 0.95, technology: 0.92 },
+  { hex: hex(2),  name: 'China',          education: 0.70, taxRate: 0.30, health: 0.70, military: 0.85, technology: 0.80 },
+  { hex: hex(3),  name: 'Germany',        education: 0.88, taxRate: 0.38, health: 0.88, military: 0.55, technology: 0.88 },
+  { hex: hex(4),  name: 'Japan',          education: 0.90, taxRate: 0.32, health: 0.95, military: 0.50, technology: 0.90 },
+  { hex: hex(5),  name: 'India',          education: 0.45, taxRate: 0.18, health: 0.55, military: 0.65, technology: 0.55 },
+  { hex: hex(6),  name: 'United Kingdom', education: 0.85, taxRate: 0.35, health: 0.85, military: 0.70, technology: 0.82 },
+  { hex: hex(7),  name: 'France',         education: 0.82, taxRate: 0.45, health: 0.90, military: 0.72, technology: 0.80 },
+  { hex: hex(8),  name: 'Italy',          education: 0.75, taxRate: 0.42, health: 0.82, military: 0.45, technology: 0.70 },
+  { hex: hex(9),  name: 'Brazil',         education: 0.50, taxRate: 0.22, health: 0.65, military: 0.45, technology: 0.50 },
+  { hex: hex(10), name: 'Canada',         education: 0.85, taxRate: 0.31, health: 0.88, military: 0.45, technology: 0.80 },
+  { hex: hex(11), name: 'Pakistan',       education: 0.40, taxRate: 0.13, health: 0.50, military: 0.60, technology: 0.35 },
+  { hex: hex(12), name: 'Bangladesh',     education: 0.42, taxRate: 0.12, health: 0.55, military: 0.35, technology: 0.35 },
+  { hex: hex(13), name: 'South Korea',    education: 0.92, taxRate: 0.27, health: 0.90, military: 0.68, technology: 0.90 },
+  { hex: hex(14), name: 'Indonesia',      education: 0.50, taxRate: 0.16, health: 0.60, military: 0.45, technology: 0.45 },
+  { hex: hex(15), name: 'Vietnam',        education: 0.55, taxRate: 0.20, health: 0.65, military: 0.50, technology: 0.45 },
+  { hex: hex(16), name: 'Saudi Arabia',   education: 0.60, taxRate: 0.05, health: 0.72, military: 0.55, technology: 0.55 },
+  { hex: hex(17), name: 'Turkey',         education: 0.62, taxRate: 0.24, health: 0.68, military: 0.62, technology: 0.55 },
+  { hex: hex(18), name: 'Iran',           education: 0.55, taxRate: 0.15, health: 0.65, military: 0.58, technology: 0.45 },
+  { hex: hex(19), name: 'Israel',         education: 0.88, taxRate: 0.28, health: 0.87, military: 0.80, technology: 0.90 },
+  { hex: hex(20), name: 'Russia',         education: 0.65, taxRate: 0.20, health: 0.62, military: 0.90, technology: 0.65 },
+  { hex: hex(21), name: 'Spain',          education: 0.78, taxRate: 0.37, health: 0.85, military: 0.45, technology: 0.70 },
+  { hex: hex(22), name: 'Poland',         education: 0.75, taxRate: 0.34, health: 0.78, military: 0.55, technology: 0.62 },
+  { hex: hex(23), name: 'Mexico',         education: 0.55, taxRate: 0.17, health: 0.70, military: 0.38, technology: 0.50 },
+  { hex: hex(24), name: 'Nigeria',        education: 0.30, taxRate: 0.08, health: 0.40, military: 0.40, technology: 0.30 },
+  { hex: hex(25), name: 'South Africa',   education: 0.58, taxRate: 0.27, health: 0.60, military: 0.42, technology: 0.50 },
+  { hex: hex(26), name: 'Australia',      education: 0.85, taxRate: 0.30, health: 0.88, military: 0.55, technology: 0.80 },
 ];
 
-export const init = spacetimedb.init((ctx) => {
-  ctx.db.world.insert({
-    id: 0,
-    year: 0,
-    status: { tag: 'lobby' },
-  });
+function seedWorld(ctx: Ctx) {
+  seedMarkets(ctx);
   for (const s of SEED_NATIONS) {
-    const row = {
-      owner: Identity.fromString(s.hex),
-      name: s.name,
-      money: s.money,
-      goods: s.goods,
-      energy: s.energy,
-      education: s.education,
-      taxRate: s.taxRate,
-      health: s.health,
-      military: s.military,
-      technology: s.technology,
-    };
-    const seedGdp = computeGdp(row);
-    ctx.db.nation.insert({ ...row, gdp: seedGdp });
-    recordBaseline(ctx, row.owner, seedGdp);
+    const owner = Identity.fromString(s.hex);
+    const stats = { education: s.education, taxRate: s.taxRate, health: s.health, military: s.military, technology: s.technology };
+    const gdp = seedNationGdp(s.name, stats);
+    ctx.db.nation.insert({ owner, name: s.name, money: STARTING_MONEY, ...stats, gdp });
+    seedNationEconomy(ctx, owner, s.name);
+    ctx.db.gdpHistory.insert({ id: 0n, owner, year: 0, gdp });
   }
+}
+
+export const init = spacetimedb.init((ctx) => {
+  ctx.db.world.insert({ id: 0, year: 0, status: { tag: 'lobby' } });
+  seedWorld(ctx);
 });
 
 export const onConnect = spacetimedb.clientConnected((_ctx) => {});
 export const onDisconnect = spacetimedb.clientDisconnected((_ctx) => {});
 
-export const claimNation = spacetimedb.reducer(
-  { name: t.string() },
-  (ctx, { name }) => {
-    const w = getWorld(ctx);
-    if (w.status.tag !== 'lobby') throw new Error('lobby is closed');
-    if (ctx.db.nation.owner.find(ctx.sender)) {
-      throw new Error('already claimed a nation');
-    }
-    // If a seat with this name already exists (a bot seed), take it over.
-    const existing = [...ctx.db.nation.iter()].find((n) => n.name === name);
-    if (existing) {
-      // Inherit the bot's existing history rows by re-pointing owner.
-      for (const h of [...ctx.db.gdpHistory.by_owner.filter(existing.owner)]) {
-        ctx.db.gdpHistory.id.update({ ...h, owner: ctx.sender });
-      }
-      ctx.db.nation.owner.delete(existing.owner);
-      const taken = { ...existing, owner: ctx.sender };
-      const takenGdp = computeGdp(taken);
-      ctx.db.nation.insert({ ...taken, gdp: takenGdp });
-      logEvent(ctx, name, `${name} joined the world.`);
-      return;
-    }
-    const fresh = {
-      owner: ctx.sender,
-      name,
-      money: STARTING_MONEY,
-      goods: STARTING_GOODS,
-      energy: STARTING_ENERGY,
-      education: STARTING_EDUCATION,
-      taxRate: STARTING_TAX,
-      health: STARTING_HEALTH,
-      military: STARTING_MILITARY,
-      technology: STARTING_TECHNOLOGY,
-    };
-    const freshGdp = computeGdp(fresh);
-    ctx.db.nation.insert({ ...fresh, gdp: freshGdp });
-    recordBaseline(ctx, ctx.sender, freshGdp);
+export const claimNation = spacetimedb.reducer({ name: t.string() }, (ctx, { name }) => {
+  const w = getWorld(ctx);
+  if (w.status.tag !== 'lobby') throw new Error('lobby is closed');
+  if (ctx.db.nation.owner.find(ctx.sender)) throw new Error('already claimed a nation');
+
+  const existing = [...ctx.db.nation.iter()].find((n) => n.name === name);
+  if (existing) {
+    // Take over a seeded bot: re-point its nation, stockpiles, production, assets, history.
+    for (const h of [...ctx.db.gdpHistory.by_owner.filter(existing.owner)]) ctx.db.gdpHistory.id.update({ ...h, owner: ctx.sender });
+    for (const s of [...ctx.db.stockpile.by_owner.filter(existing.owner)]) ctx.db.stockpile.id.update({ ...s, owner: ctx.sender });
+    for (const p of [...ctx.db.production.by_owner.filter(existing.owner)]) ctx.db.production.id.update({ ...p, owner: ctx.sender });
+    for (const a of [...ctx.db.asset.by_owner.filter(existing.owner)]) ctx.db.asset.id.update({ ...a, owner: ctx.sender });
+    ctx.db.nation.owner.delete(existing.owner);
+    const taken = { ...existing, owner: ctx.sender };
+    ctx.db.nation.insert(taken);
+    recomputeNationGdp(ctx, taken);
     logEvent(ctx, name, `${name} joined the world.`);
+    return;
   }
-);
+
+  const stats = { education: STARTING_EDUCATION, taxRate: STARTING_TAX, health: STARTING_HEALTH, military: STARTING_MILITARY, technology: STARTING_TECHNOLOGY };
+  const gdp = seedNationGdp(name, stats);
+  ctx.db.nation.insert({ owner: ctx.sender, name, money: STARTING_MONEY, ...stats, gdp });
+  seedNationEconomy(ctx, ctx.sender, name);
+  ctx.db.gdpHistory.insert({ id: 0n, owner: ctx.sender, year: 0, gdp });
+  logEvent(ctx, name, `${name} joined the world.`);
+});
 
 export const startRun = spacetimedb.reducer((ctx) => {
   const w = getWorld(ctx);
@@ -393,225 +481,271 @@ export const startRun = spacetimedb.reducer((ctx) => {
   logEvent(ctx, 'System', `🏁 The simulation begins. ${me.name} hit Start.`);
 });
 
-export const investEducation = spacetimedb.reducer(
-  { amount: t.u64() },
-  (ctx, { amount }) => {
+export const setTax = spacetimedb.reducer({ rate: t.f32() }, (ctx, { rate }) => {
+  requireRunning(ctx);
+  const n = requireMyNation(ctx);
+  const clamped = clamp01(rate);
+  const updated = { ...n, taxRate: clamped };
+  ctx.db.nation.owner.update(updated);
+  recomputeNationGdp(ctx, updated);
+  logEvent(ctx, n.name, `🏛 ${n.name} set tax rate to ${(clamped * 100).toFixed(0)}%.`);
+});
+
+// ---------- market: buy / sell (instant, no time advance) ----------
+export const buyCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
+  requireRunning(ctx);
+  const n = requireMyNation(ctx);
+  if (!isCommodity(commodity)) throw new Error('unknown commodity');
+  if (amount <= 0n) throw new Error('amount must be > 0');
+  const m = ctx.db.commodityMarket.commodity.find(commodity);
+  if (!m) throw new Error('market not found');
+  const amt = Number(amount);
+  if (!canAfford(Number(n.money), m.currentPrice, amt)) throw new Error('insufficient money');
+  const cost = toBig(costOf(m.currentPrice, amt));
+  ctx.db.nation.owner.update({ ...n, money: n.money - cost });
+  addStockpile(ctx, n.owner, commodity, amount);
+  const nextPrice = clampPrice(m.currentPrice + priceImpact(m.currentPrice, amt, m.globalSupply, 'buy'), m.basePrice, eventActive(m.crisisUntilYear, getWorld(ctx).year));
+  ctx.db.commodityMarket.commodity.update({ ...m, recentBuyVolume: m.recentBuyVolume + amt, currentPrice: nextPrice });
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
+  logEvent(ctx, n.name, `📈 ${n.name} bought ${amt} ${commodity} for $${Number(cost)}M.`);
+});
+
+export const sellCommodity = spacetimedb.reducer({ commodity: t.string(), amount: t.u64() }, (ctx, { commodity, amount }) => {
+  requireRunning(ctx);
+  const n = requireMyNation(ctx);
+  if (!isCommodity(commodity)) throw new Error('unknown commodity');
+  if (amount <= 0n) throw new Error('amount must be > 0');
+  const m = ctx.db.commodityMarket.commodity.find(commodity);
+  if (!m) throw new Error('market not found');
+  const have = stockpileAmount(ctx, n.owner, commodity);
+  if (!canSell(Number(have), Number(amount))) throw new Error('insufficient stockpile');
+  const amt = Number(amount);
+  const revenue = toBig(costOf(m.currentPrice, amt));
+  addStockpile(ctx, n.owner, commodity, -amount);
+  ctx.db.nation.owner.update({ ...n, money: n.money + revenue });
+  const nextPrice = clampPrice(m.currentPrice + priceImpact(m.currentPrice, amt, m.globalSupply, 'sell'), m.basePrice, eventActive(m.crisisUntilYear, getWorld(ctx).year));
+  ctx.db.commodityMarket.commodity.update({ ...m, recentSellVolume: m.recentSellVolume + amt, currentPrice: nextPrice });
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
+  logEvent(ctx, n.name, `📉 ${n.name} sold ${amt} ${commodity} for $${Number(revenue)}M.`);
+});
+
+// ---------- assets ----------
+export const buildAsset = spacetimedb.reducer({ typeKey: t.string() }, (ctx, { typeKey }) => {
+  const w = requireRunning(ctx);
+  const n = requireMyNation(ctx);
+  const def = ASSET_BY_KEY[typeKey];
+  if (!def) throw new Error('unknown asset');
+  const stocks = stockpileMapNumber(ctx, n.owner);
+  const check = canBuildAsset(Number(n.money), stocks, def);
+  if (!check.ok) throw new Error(`cannot build ${def.label}: missing ${check.missing}`);
+  ctx.db.nation.owner.update({ ...n, money: n.money - toBig(def.costMoney) });
+  for (const c of def.costs) addStockpile(ctx, n.owner, c.commodity, -toBig(c.amount));
+  ctx.db.asset.insert({ id: 0n, owner: n.owner, typeKey, builtYear: w.year });
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(n.owner)!);
+  logEvent(ctx, n.name, `🏗 ${n.name} built a ${def.label}.`);
+});
+
+// ---------- peer-to-peer trade (now spans all commodities) ----------
+export const proposeTrade = spacetimedb.reducer(
+  { to: t.identity(), giveCommodity: t.string(), giveAmount: t.u64(), getCommodity: t.string(), getAmount: t.u64() },
+  (ctx, { to, giveCommodity, giveAmount, getCommodity, getAmount }) => {
     requireRunning(ctx);
-    const n = requireMyNation(ctx);
-    if (amount === 0n) throw new Error('amount must be > 0');
-    if (n.money < amount) throw new Error('insufficient money');
-    const educationGain = Number(amount) * 0.0001;
-    ctx.db.nation.owner.update({
-      ...n,
-      money: n.money - amount,
-      education: clamp01(n.education + educationGain),
+    const me = requireMyNation(ctx);
+    if (to.toHexString() === ctx.sender.toHexString()) throw new Error('cannot trade with yourself');
+    if (!isCommodity(giveCommodity) || !isCommodity(getCommodity)) throw new Error('unknown commodity');
+    const counterparty = ctx.db.nation.owner.find(to);
+    if (!counterparty) throw new Error('target nation does not exist');
+    if (giveAmount <= 0n || getAmount <= 0n) throw new Error('amounts must be > 0');
+    if (stockpileAmount(ctx, ctx.sender, giveCommodity) < giveAmount) throw new Error(`insufficient ${giveCommodity} to offer`);
+    ctx.db.tradeOffer.insert({
+      id: 0n, fromOwner: ctx.sender, toOwner: to,
+      giveCommodity, giveAmount, getCommodity, getAmount, createdAt: ctx.timestamp,
     });
-    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in 📚 Education.`);
-    advanceTime(ctx);
+    logEvent(ctx, me.name, `🤝 ${me.name} offered ${counterparty.name}: ${giveAmount} ${giveCommodity} for ${getAmount} ${getCommodity}.`);
   }
 );
 
-export const investHealthcare = spacetimedb.reducer(
-  { amount: t.u64() },
-  (ctx, { amount }) => {
-    requireRunning(ctx);
-    const n = requireMyNation(ctx);
-    if (amount === 0n) throw new Error('amount must be > 0');
-    if (n.money < amount) throw new Error('insufficient money');
-    const healthGain = Number(amount) * 0.0001;
-    ctx.db.nation.owner.update({
-      ...n,
-      money: n.money - amount,
-      health: clamp01(n.health + healthGain),
+export const respondTrade = spacetimedb.reducer({ offerId: t.u64(), approve: t.bool() }, (ctx, { offerId, approve }) => {
+  requireRunning(ctx);
+  const offer = ctx.db.tradeOffer.id.find(offerId);
+  if (!offer) throw new Error('offer not found');
+  if (offer.toOwner.toHexString() !== ctx.sender.toHexString()) throw new SenderError('only the recipient can respond');
+
+  if (!approve) {
+    bumpTrust(ctx, offer.fromOwner, offer.toOwner, -5);
+    const proposer = ctx.db.nation.owner.find(offer.fromOwner);
+    const responder = ctx.db.nation.owner.find(offer.toOwner);
+    if (proposer && responder) logEvent(ctx, responder.name, `❌ ${responder.name} rejected ${proposer.name}'s trade.`);
+    ctx.db.tradeOffer.id.delete(offerId);
+    return;
+  }
+
+  const proposer = ctx.db.nation.owner.find(offer.fromOwner);
+  const responder = ctx.db.nation.owner.find(offer.toOwner);
+  if (!proposer || !responder) throw new Error('a party no longer exists');
+  if (stockpileAmount(ctx, offer.fromOwner, offer.giveCommodity) < offer.giveAmount) throw new Error('proposer can no longer cover the offer');
+  if (stockpileAmount(ctx, offer.toOwner, offer.getCommodity) < offer.getAmount) throw new Error('you do not have enough to fulfil the offer');
+
+  // Atomic swap.
+  addStockpile(ctx, offer.fromOwner, offer.giveCommodity, -offer.giveAmount);
+  addStockpile(ctx, offer.toOwner, offer.giveCommodity, offer.giveAmount);
+  addStockpile(ctx, offer.toOwner, offer.getCommodity, -offer.getAmount);
+  addStockpile(ctx, offer.fromOwner, offer.getCommodity, offer.getAmount);
+
+  bumpTrust(ctx, offer.fromOwner, offer.toOwner, 5);
+  bumpTrust(ctx, offer.toOwner, offer.fromOwner, 5);
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(offer.fromOwner)!);
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(offer.toOwner)!);
+  logEvent(ctx, responder.name, `✅ ${responder.name} accepted ${proposer.name}'s trade · ${offer.giveAmount} ${offer.giveCommodity} ↔ ${offer.getAmount} ${offer.getCommodity}.`);
+  ctx.db.tradeOffer.id.delete(offerId);
+});
+
+// ---------- yearly settlement ----------
+function settleYear(ctx: Ctx) {
+  const w = getWorld(ctx);
+  const newYear = w.year + 1;
+  const nations = [...ctx.db.nation.iter()];
+
+  // Per-nation: tax, production, consumption, asset tailwinds + upkeep, shortage penalties.
+  const shortageByOwner = new Map<string, Set<StatKey>>();
+  for (const n of nations) {
+    let money = n.money;
+    money += toBig(taxHarvest(n.gdp, n.taxRate));
+
+    // production
+    for (const p of ctx.db.production.by_owner.filter(n.owner)) addStockpile(ctx, n.owner, p.commodity, p.perYear);
+
+    // consumption + shortage detection
+    const shortages = new Set<StatKey>();
+    for (const c of COMMODITY_KEYS) {
+      const need = toBig(consumptionFor(c));
+      const have = stockpileAmount(ctx, n.owner, c);
+      if (have < need) {
+        const stat = COMMODITIES[c].shortageStat;
+        if (stat) shortages.add(stat);
+      }
+      addStockpile(ctx, n.owner, c, -need);
+    }
+
+    // asset tailwinds (stat growth) + upkeep
+    const tw = aggregateTailwinds(ownedAssets(ctx, n.owner), newYear);
+    let education = clamp01(n.education + tw.statDeltas.education);
+    let health = clamp01(n.health + tw.statDeltas.health);
+    let military = clamp01(n.military + tw.statDeltas.military);
+    let technology = clamp01(n.technology + tw.statDeltas.technology);
+    money = money > toBig(tw.upkeep) ? money - toBig(tw.upkeep) : 0n;
+
+    // shortage penalties
+    for (const stat of shortages) {
+      if (stat === 'education') education = shortagePenalty(education, true);
+      else if (stat === 'health') health = shortagePenalty(health, true);
+      else if (stat === 'military') military = shortagePenalty(military, true);
+      else if (stat === 'technology') technology = shortagePenalty(technology, true);
+    }
+    shortageByOwner.set(n.owner.toHexString(), shortages);
+
+    ctx.db.nation.owner.update({ ...n, money, education, health, military, technology });
+  }
+
+  // Market update per commodity (uses post-production/consumption stockpiles).
+  for (const c of COMMODITY_KEYS) {
+    const m = ctx.db.commodityMarket.commodity.find(c);
+    if (!m) continue;
+    const def = COMMODITIES[c];
+    let stocks = 0;
+    let prod = 0;
+    for (const row of ctx.db.stockpile.iter()) if (row.commodity === c) stocks += Number(row.amount);
+    for (const row of ctx.db.production.iter()) if (row.commodity === c) prod += Number(row.perYear);
+    const globalSupply = def.baseSupply + stocks + prod;
+    const globalDemand = def.baseDemand + nations.length * consumptionFor(c) + m.recentBuyVolume;
+    const scarcity = computeScarcity(globalSupply, globalDemand);
+    const volatility = computeVolatility(recentPrices(ctx, c));
+    const target = computeTargetPrice(
+      def.basePrice,
+      supplyDemandMultiplier(globalSupply, globalDemand, m.recentBuyVolume, m.recentSellVolume),
+      scarcityMultiplier(scarcity),
+      m.eventMultiplier,
+      volatilityMultiplier(volatility)
+    );
+    const next = clampPrice(smoothPrice(m.currentPrice, target), def.basePrice, eventActive(m.crisisUntilYear, newYear));
+    const change = next - m.currentPrice;
+    ctx.db.commodityMarket.commodity.update({
+      ...m,
+      previousPrice: m.currentPrice,
+      currentPrice: next,
+      priceChange: change,
+      priceChangePercent: m.currentPrice > 0 ? (change / m.currentPrice) * 100 : 0,
+      globalSupply,
+      globalDemand,
+      scarcityLevel: scarcity,
+      volatility,
+      recentBuyVolume: decayVolume(m.recentBuyVolume),
+      recentSellVolume: decayVolume(m.recentSellVolume),
+      lastUpdatedYear: newYear,
     });
-    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in ❤ Healthcare.`);
-    advanceTime(ctx);
+    pushHistory(ctx, c, newYear, next);
   }
-);
 
-export const investMilitary = spacetimedb.reducer(
-  { amount: t.u64() },
-  (ctx, { amount }) => {
+  // GDP recompute (post-market) + history point.
+  for (const n of nations) {
+    const cur = ctx.db.nation.owner.find(n.owner);
+    if (!cur) continue;
+    const tailwind = aggregateTailwinds(ownedAssets(ctx, n.owner), newYear);
+    const gdp = computeGdpValue(
+      { education: cur.education, taxRate: cur.taxRate, health: cur.health, military: cur.military, technology: cur.technology },
+      resourceValueOf(ctx, n.owner),
+      tailwind.gdp
+    );
+    ctx.db.nation.owner.update({ ...cur, gdp });
+    ctx.db.gdpHistory.insert({ id: 0n, owner: n.owner, year: newYear, gdp });
+  }
+
+  const status: typeof w.status = newYear >= GAME_END_YEAR ? { tag: 'ended' } : w.status;
+  ctx.db.world.id.update({ ...w, year: newYear, status });
+  logEvent(ctx, 'System', `📅 Year ${newYear}: taxes collected, production settled, markets updated.`);
+  if (newYear >= GAME_END_YEAR && w.status.tag !== 'ended') {
+    let winner: { name: string; gdp: number } | null = null;
+    for (const n of ctx.db.nation.iter()) if (!winner || n.gdp > winner.gdp) winner = { name: n.name, gdp: n.gdp };
+    if (winner) logEvent(ctx, winner.name, `🏆 ${winner.name} wins with GDP $${winner.gdp.toFixed(0)}M.`);
+  }
+}
+
+export const advanceYear = spacetimedb.reducer((ctx) => {
+  requireRunning(ctx);
+  requireMyNation(ctx);
+  settleYear(ctx);
+});
+
+export const triggerMarketShock = spacetimedb.reducer(
+  { commodity: t.string(), magnitude: t.f32(), durationYears: t.f32() },
+  (ctx, { commodity, magnitude, durationYears }) => {
     requireRunning(ctx);
-    const n = requireMyNation(ctx);
-    if (amount === 0n) throw new Error('amount must be > 0');
-    if (n.money < amount) throw new Error('insufficient money');
-    const militaryGain = Number(amount) * 0.0001;
-    ctx.db.nation.owner.update({
-      ...n,
-      money: n.money - amount,
-      military: clamp01(n.military + militaryGain),
+    if (!isCommodity(commodity)) throw new Error('unknown commodity');
+    const m = ctx.db.commodityMarket.commodity.find(commodity);
+    if (!m) throw new Error('market not found');
+    const w = getWorld(ctx);
+    ctx.db.commodityMarket.commodity.update({
+      ...m,
+      eventMultiplier: Math.max(0.2, magnitude),
+      crisisUntilYear: w.year + Math.max(0, durationYears),
     });
-    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in 🛡 Military.`);
-    advanceTime(ctx);
+    logEvent(ctx, 'System', `⚠ Market shock on ${commodity} (x${magnitude.toFixed(2)} for ${durationYears} yrs).`);
   }
 );
 
-export const investTechnology = spacetimedb.reducer(
-  { amount: t.u64() },
-  (ctx, { amount }) => {
-    requireRunning(ctx);
-    const n = requireMyNation(ctx);
-    if (amount === 0n) throw new Error('amount must be > 0');
-    if (n.money < amount) throw new Error('insufficient money');
-    const technologyGain = Number(amount) * 0.0001;
-    ctx.db.nation.owner.update({
-      ...n,
-      money: n.money - amount,
-      technology: clamp01(n.technology + technologyGain),
-    });
-    logEvent(ctx, n.name, `${n.name} invested ${amount.toString()}M in 🔬 Technology.`);
-    advanceTime(ctx);
-  }
-);
-
-export const setTax = spacetimedb.reducer(
-  { rate: t.f32() },
-  (ctx, { rate }) => {
-    requireRunning(ctx);
-    const n = requireMyNation(ctx);
-    const clamped = clamp01(rate);
-    ctx.db.nation.owner.update({ ...n, taxRate: clamped });
-    logEvent(ctx, n.name, `🏛 ${n.name} set tax rate to ${(clamped * 100).toFixed(0)}%.`);
-    advanceTime(ctx);
-  }
-);
-
-// Reset world back to a fresh lobby with the original seed bots.
-// Open to any caller — easier iteration during the human-only phase.
+// ---------- reset ----------
 export const resetGame = spacetimedb.reducer((ctx) => {
-  for (const n of [...ctx.db.nation.iter()]) {
-    ctx.db.nation.owner.delete(n.owner);
-  }
-  for (const o of [...ctx.db.tradeOffer.iter()]) {
-    ctx.db.tradeOffer.id.delete(o.id);
-  }
-  for (const r of [...ctx.db.trust.iter()]) {
-    ctx.db.trust.id.delete(r.id);
-  }
-  for (const e of [...ctx.db.worldEvent.iter()]) {
-    ctx.db.worldEvent.id.delete(e.id);
-  }
-  for (const h of [...ctx.db.gdpHistory.iter()]) {
-    ctx.db.gdpHistory.id.delete(h.id);
-  }
-  for (const s of SEED_NATIONS) {
-    const row = {
-      owner: Identity.fromString(s.hex),
-      name: s.name,
-      money: s.money,
-      goods: s.goods,
-      energy: s.energy,
-      education: s.education,
-      taxRate: s.taxRate,
-      health: s.health,
-      military: s.military,
-      technology: s.technology,
-    };
-    const seedGdp = computeGdp(row);
-    ctx.db.nation.insert({ ...row, gdp: seedGdp });
-    recordBaseline(ctx, row.owner, seedGdp);
-  }
+  for (const n of [...ctx.db.nation.iter()]) ctx.db.nation.owner.delete(n.owner);
+  for (const s of [...ctx.db.stockpile.iter()]) ctx.db.stockpile.id.delete(s.id);
+  for (const p of [...ctx.db.production.iter()]) ctx.db.production.id.delete(p.id);
+  for (const m of [...ctx.db.commodityMarket.iter()]) ctx.db.commodityMarket.commodity.delete(m.commodity);
+  for (const h of [...ctx.db.marketHistory.iter()]) ctx.db.marketHistory.id.delete(h.id);
+  for (const a of [...ctx.db.asset.iter()]) ctx.db.asset.id.delete(a.id);
+  for (const o of [...ctx.db.tradeOffer.iter()]) ctx.db.tradeOffer.id.delete(o.id);
+  for (const r of [...ctx.db.trust.iter()]) ctx.db.trust.id.delete(r.id);
+  for (const e of [...ctx.db.worldEvent.iter()]) ctx.db.worldEvent.id.delete(e.id);
+  for (const g of [...ctx.db.gdpHistory.iter()]) ctx.db.gdpHistory.id.delete(g.id);
+  seedWorld(ctx);
   const w = getWorld(ctx);
   ctx.db.world.id.update({ ...w, year: 0, status: { tag: 'lobby' } });
 });
-
-export const proposeTrade = spacetimedb.reducer(
-  {
-    to: t.identity(),
-    giveResource: Resource,
-    giveAmount: t.u64(),
-    getResource: Resource,
-    getAmount: t.u64(),
-  },
-  (ctx, { to, giveResource, giveAmount, getResource, getAmount }) => {
-    requireRunning(ctx);
-    const me = requireMyNation(ctx);
-    if (to.toHexString() === ctx.sender.toHexString()) {
-      throw new Error('cannot trade with yourself');
-    }
-    const counterparty = ctx.db.nation.owner.find(to);
-    if (!counterparty) throw new Error('target nation does not exist');
-    if (giveAmount === 0n || getAmount === 0n) {
-      throw new Error('amounts must be > 0');
-    }
-    if (getResourceAmount(me, giveResource) < giveAmount) {
-      throw new Error(`insufficient ${giveResource.tag} to offer`);
-    }
-    ctx.db.tradeOffer.insert({
-      id: 0n,
-      fromOwner: ctx.sender,
-      toOwner: to,
-      giveResource,
-      giveAmount,
-      getResource,
-      getAmount,
-      createdAt: ctx.timestamp,
-    });
-    logEvent(
-      ctx,
-      me.name,
-      `🤝 ${me.name} offered ${counterparty.name}: ${giveAmount.toString()} ${giveResource.tag} for ${getAmount.toString()} ${getResource.tag}.`,
-    );
-    advanceTime(ctx);
-  }
-);
-
-export const respondTrade = spacetimedb.reducer(
-  { offerId: t.u64(), approve: t.bool() },
-  (ctx, { offerId, approve }) => {
-    requireRunning(ctx);
-    const offer = ctx.db.tradeOffer.id.find(offerId);
-    if (!offer) throw new Error('offer not found');
-    if (offer.toOwner.toHexString() !== ctx.sender.toHexString()) {
-      throw new SenderError('only the recipient can respond');
-    }
-
-    if (!approve) {
-      // Proposer (offer.fromOwner) loses trust in the rejecter (offer.toOwner).
-      bumpTrust(ctx, offer.fromOwner, offer.toOwner, -5);
-      const proposer = ctx.db.nation.owner.find(offer.fromOwner);
-      const responder = ctx.db.nation.owner.find(offer.toOwner);
-      if (proposer && responder) {
-        logEvent(ctx, responder.name, `❌ ${responder.name} rejected ${proposer.name}'s trade.`);
-      }
-      ctx.db.tradeOffer.id.delete(offerId);
-      advanceTime(ctx);
-      return;
-    }
-
-    // Approve path: re-check feasibility on both sides at response time.
-    const proposer = ctx.db.nation.owner.find(offer.fromOwner);
-    const responder = ctx.db.nation.owner.find(offer.toOwner);
-    if (!proposer || !responder) throw new Error('a party no longer exists');
-
-    if (getResourceAmount(proposer, offer.giveResource) < offer.giveAmount) {
-      throw new Error('proposer can no longer cover the offer');
-    }
-    if (getResourceAmount(responder, offer.getResource) < offer.getAmount) {
-      throw new Error('you do not have enough to fulfil the offer');
-    }
-
-    // Atomic swap: proposer loses giveAmount of giveResource, gains getAmount of getResource.
-    // Responder is the mirror.
-    let p = proposer;
-    let r = responder;
-    p = withResource(p, offer.giveResource, getResourceAmount(p, offer.giveResource) - offer.giveAmount);
-    r = withResource(r, offer.giveResource, getResourceAmount(r, offer.giveResource) + offer.giveAmount);
-    r = withResource(r, offer.getResource, getResourceAmount(r, offer.getResource) - offer.getAmount);
-    p = withResource(p, offer.getResource, getResourceAmount(p, offer.getResource) + offer.getAmount);
-
-    ctx.db.nation.owner.update(p);
-    ctx.db.nation.owner.update(r);
-    // Both parties gain trust on a successful trade.
-    bumpTrust(ctx, offer.fromOwner, offer.toOwner, 5);
-    bumpTrust(ctx, offer.toOwner, offer.fromOwner, 5);
-    logEvent(
-      ctx,
-      responder.name,
-      `✅ ${responder.name} accepted ${proposer.name}'s trade · ${offer.giveAmount.toString()} ${offer.giveResource.tag} ↔ ${offer.getAmount.toString()} ${offer.getResource.tag}.`,
-    );
-    ctx.db.tradeOffer.id.delete(offerId);
-    advanceTime(ctx);
-  }
-);

@@ -34,22 +34,28 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AdvanceYearReducer from "./advance_year_reducer";
+import BuildAssetReducer from "./build_asset_reducer";
+import BuyCommodityReducer from "./buy_commodity_reducer";
 import ClaimNationReducer from "./claim_nation_reducer";
-import InvestEducationReducer from "./invest_education_reducer";
-import InvestHealthcareReducer from "./invest_healthcare_reducer";
-import InvestMilitaryReducer from "./invest_military_reducer";
-import InvestTechnologyReducer from "./invest_technology_reducer";
 import ProposeTradeReducer from "./propose_trade_reducer";
 import ResetGameReducer from "./reset_game_reducer";
 import RespondTradeReducer from "./respond_trade_reducer";
+import SellCommodityReducer from "./sell_commodity_reducer";
 import SetTaxReducer from "./set_tax_reducer";
 import StartRunReducer from "./start_run_reducer";
+import TriggerMarketShockReducer from "./trigger_market_shock_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AssetRow from "./asset_table";
+import CommodityMarketRow from "./commodity_market_table";
 import GdpHistoryRow from "./gdp_history_table";
+import MarketHistoryRow from "./market_history_table";
 import NationRow from "./nation_table";
+import ProductionRow from "./production_table";
+import StockpileRow from "./stockpile_table";
 import TradeOfferRow from "./trade_offer_table";
 import TrustRow from "./trust_table";
 import WorldRow from "./world_table";
@@ -59,6 +65,31 @@ import WorldEventRow from "./world_event_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  asset: __table({
+    name: 'asset',
+    indexes: [
+      { accessor: 'id', name: 'asset_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner', name: 'asset_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'asset_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AssetRow),
+  commodityMarket: __table({
+    name: 'commodity_market',
+    indexes: [
+      { accessor: 'commodity', name: 'commodity_market_commodity_idx_btree', algorithm: 'btree', columns: [
+        'commodity',
+      ] },
+    ],
+    constraints: [
+      { name: 'commodity_market_commodity_key', constraint: 'unique', columns: ['commodity'] },
+    ],
+  }, CommodityMarketRow),
   gdpHistory: __table({
     name: 'gdp_history',
     indexes: [
@@ -73,6 +104,20 @@ const tablesSchema = __schema({
       { name: 'gdp_history_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, GdpHistoryRow),
+  marketHistory: __table({
+    name: 'market_history',
+    indexes: [
+      { accessor: 'by_commodity', name: 'market_history_commodity_idx_btree', algorithm: 'btree', columns: [
+        'commodity',
+      ] },
+      { accessor: 'id', name: 'market_history_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'market_history_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, MarketHistoryRow),
   nation: __table({
     name: 'nation',
     indexes: [
@@ -84,6 +129,38 @@ const tablesSchema = __schema({
       { name: 'nation_owner_key', constraint: 'unique', columns: ['owner'] },
     ],
   }, NationRow),
+  production: __table({
+    name: 'production',
+    indexes: [
+      { accessor: 'id', name: 'production_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner', name: 'production_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'production_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ProductionRow),
+  stockpile: __table({
+    name: 'stockpile',
+    indexes: [
+      { accessor: 'id', name: 'stockpile_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner_commodity', name: 'stockpile_owner_commodity_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+        'commodity',
+      ] },
+      { accessor: 'by_owner', name: 'stockpile_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'stockpile_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, StockpileRow),
   tradeOffer: __table({
     name: 'trade_offer',
     indexes: [
@@ -142,16 +219,17 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("advance_year", AdvanceYearReducer),
+  __reducerSchema("build_asset", BuildAssetReducer),
+  __reducerSchema("buy_commodity", BuyCommodityReducer),
   __reducerSchema("claim_nation", ClaimNationReducer),
-  __reducerSchema("invest_education", InvestEducationReducer),
-  __reducerSchema("invest_healthcare", InvestHealthcareReducer),
-  __reducerSchema("invest_military", InvestMilitaryReducer),
-  __reducerSchema("invest_technology", InvestTechnologyReducer),
   __reducerSchema("propose_trade", ProposeTradeReducer),
   __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("respond_trade", RespondTradeReducer),
+  __reducerSchema("sell_commodity", SellCommodityReducer),
   __reducerSchema("set_tax", SetTaxReducer),
   __reducerSchema("start_run", StartRunReducer),
+  __reducerSchema("trigger_market_shock", TriggerMarketShockReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

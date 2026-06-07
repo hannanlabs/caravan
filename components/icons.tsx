@@ -166,6 +166,24 @@ export const IconShield = (p: IconProps) => (
   </Svg>
 );
 
+// candlesticks — Stock Market
+export const IconMarket = (p: IconProps) => (
+  <Svg {...p}>
+    <line x1={7} y1={4} x2={7} y2={20} />
+    <rect x={5} y={8} width={4} height={7} rx={0.6} />
+    <line x1={16} y1={4} x2={16} y2={20} />
+    <rect x={14} y={6} width={4} height={6} rx={0.6} />
+  </Svg>
+);
+
+// fast-forward — Advance year
+export const IconForward = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 6l7 6-7 6z" />
+    <path d="M13 6l7 6-7 6z" />
+  </Svg>
+);
+
 // cpu / chip — Technology
 export const IconCpu = (p: IconProps) => (
   <Svg {...p}>

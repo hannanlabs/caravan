@@ -1,33 +1,17 @@
 'use client';
 
-import { InvestModal } from './InvestModal';
+import { AssetShopModal } from './AssetShopModal';
 import { IconCpu } from './icons';
-import type { NationData } from '../lib/spacetimedb-server';
+import type { ShopModalProps } from './MilitaryModal';
 
-interface TechnologyModalProps {
-  open: boolean;
-  onClose: () => void;
-  myNation?: NationData;
-  isActive: boolean;
-  amount: number;
-  setAmount: (n: number) => void;
-  onInvest: (amount: bigint) => void;
-}
-
-export function TechnologyModal({ open, onClose, myNation, isActive, amount, setAmount, onInvest }: TechnologyModalProps) {
+export function TechnologyModal(props: ShopModalProps) {
   return (
-    <InvestModal
-      open={open}
-      onClose={onClose}
-      myNation={myNation}
-      isActive={isActive}
-      amount={amount}
-      setAmount={setAmount}
-      onInvest={onInvest}
+    <AssetShopModal
+      {...props}
+      category="technology"
+      title="Technology"
+      sub="Build R&D — development and efficiency"
       icon={<IconCpu />}
-      title="Invest in technology"
-      sub="R&D compounds national output"
-      metric="technology"
     />
   );
 }

@@ -39,7 +39,7 @@ export function TaxesModal({ open, onClose, myNation, isActive, taxInput, setTax
       width={480}
       foot={
         <>
-          <span className="foot-note">Confirming advances the year by 0.25.</span>
+          <span className="foot-note">Tax is harvested each year you advance.</span>
           <button
             className="btn btn-primary"
             disabled={!isActive}

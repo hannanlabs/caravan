@@ -12,11 +12,7 @@ import {
 
 export default __t.row({
   id: __t.u64().primaryKey(),
-  fromOwner: __t.identity().name("from_owner"),
-  toOwner: __t.identity().name("to_owner"),
-  giveCommodity: __t.string().name("give_commodity"),
-  giveAmount: __t.u64().name("give_amount"),
-  getCommodity: __t.string().name("get_commodity"),
-  getAmount: __t.u64().name("get_amount"),
-  createdAt: __t.timestamp().name("created_at"),
+  owner: __t.identity(),
+  typeKey: __t.string().name("type_key"),
+  builtYear: __t.f32().name("built_year"),
 });

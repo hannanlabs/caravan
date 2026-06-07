@@ -1,33 +1,27 @@
 'use client';
 
-import { InvestModal } from './InvestModal';
+import { AssetShopModal } from './AssetShopModal';
 import { IconShield } from './icons';
-import type { NationData } from '../lib/spacetimedb-server';
 
-interface MilitaryModalProps {
+export interface ShopModalProps {
   open: boolean;
   onClose: () => void;
-  myNation?: NationData;
   isActive: boolean;
-  amount: number;
-  setAmount: (n: number) => void;
-  onInvest: (amount: bigint) => void;
+  hasNation: boolean;
+  money: number;
+  stock: Record<string, number>;
+  ownedCounts: Record<string, number>;
+  onBuild: (typeKey: string) => void;
 }
 
-export function MilitaryModal({ open, onClose, myNation, isActive, amount, setAmount, onInvest }: MilitaryModalProps) {
+export function MilitaryModal(props: ShopModalProps) {
   return (
-    <InvestModal
-      open={open}
-      onClose={onClose}
-      myNation={myNation}
-      isActive={isActive}
-      amount={amount}
-      setAmount={setAmount}
-      onInvest={onInvest}
+    <AssetShopModal
+      {...props}
+      category="military"
+      title="Military"
+      sub="Build forces — lasting defense and GDP"
       icon={<IconShield />}
-      title="Invest in military"
-      sub="Strength projects power and stability"
-      metric="military"
     />
   );
 }

@@ -11,5 +11,6 @@ import {
 } from "spacetimedb";
 
 export default {
+  commodity: __t.string(),
   amount: __t.u64(),
 };

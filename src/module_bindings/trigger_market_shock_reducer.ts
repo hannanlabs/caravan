@@ -11,5 +11,7 @@ import {
 } from "spacetimedb";
 
 export default {
-  amount: __t.u64(),
+  commodity: __t.string(),
+  magnitude: __t.f32(),
+  durationYears: __t.f32(),
 };

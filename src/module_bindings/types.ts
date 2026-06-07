@@ -10,6 +10,33 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const Asset = __t.object("Asset", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  typeKey: __t.string(),
+  builtYear: __t.f32(),
+});
+export type Asset = __Infer<typeof Asset>;
+
+export const CommodityMarket = __t.object("CommodityMarket", {
+  commodity: __t.string(),
+  basePrice: __t.f64(),
+  currentPrice: __t.f64(),
+  previousPrice: __t.f64(),
+  priceChange: __t.f64(),
+  priceChangePercent: __t.f64(),
+  globalSupply: __t.f64(),
+  globalDemand: __t.f64(),
+  scarcityLevel: __t.f32(),
+  recentBuyVolume: __t.f64(),
+  recentSellVolume: __t.f64(),
+  volatility: __t.f32(),
+  eventMultiplier: __t.f32(),
+  crisisUntilYear: __t.f32(),
+  lastUpdatedYear: __t.f32(),
+});
+export type CommodityMarket = __Infer<typeof CommodityMarket>;
+
 export const GdpHistory = __t.object("GdpHistory", {
   id: __t.u64(),
   owner: __t.identity(),
@@ -18,12 +45,18 @@ export const GdpHistory = __t.object("GdpHistory", {
 });
 export type GdpHistory = __Infer<typeof GdpHistory>;
 
+export const MarketHistory = __t.object("MarketHistory", {
+  id: __t.u64(),
+  commodity: __t.string(),
+  year: __t.f32(),
+  price: __t.f64(),
+});
+export type MarketHistory = __Infer<typeof MarketHistory>;
+
 export const Nation = __t.object("Nation", {
   owner: __t.identity(),
   name: __t.string(),
   money: __t.u64(),
-  goods: __t.u64(),
-  energy: __t.u64(),
   education: __t.f32(),
   taxRate: __t.f32(),
   health: __t.f32(),
@@ -33,24 +66,29 @@ export const Nation = __t.object("Nation", {
 });
 export type Nation = __Infer<typeof Nation>;
 
-// The tagged union or sum type for the algebraic type `Resource`.
-export const Resource = __t.enum("Resource", {
-  Goods: __t.unit(),
-  Energy: __t.unit(),
+export const Production = __t.object("Production", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  commodity: __t.string(),
+  perYear: __t.u64(),
 });
-export type Resource = __Infer<typeof Resource>;
+export type Production = __Infer<typeof Production>;
+
+export const Stockpile = __t.object("Stockpile", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  commodity: __t.string(),
+  amount: __t.u64(),
+});
+export type Stockpile = __Infer<typeof Stockpile>;
 
 export const TradeOffer = __t.object("TradeOffer", {
   id: __t.u64(),
   fromOwner: __t.identity(),
   toOwner: __t.identity(),
-  get giveResource() {
-    return Resource;
-  },
+  giveCommodity: __t.string(),
   giveAmount: __t.u64(),
-  get getResource() {
-    return Resource;
-  },
+  getCommodity: __t.string(),
   getAmount: __t.u64(),
   createdAt: __t.timestamp(),
 });
