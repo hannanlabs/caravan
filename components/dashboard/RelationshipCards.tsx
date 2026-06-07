@@ -10,11 +10,12 @@ interface RelationshipCardsProps {
   identity?: { toHexString(): string };
   trustOut: Map<string, number>;
   winnerHex?: string;
+  atWar?: Set<string>;
 }
 
 type Tone = 'ally' | 'neutral' | 'rival';
 
-export function RelationshipCards({ nations, identity, trustOut, winnerHex }: RelationshipCardsProps) {
+export function RelationshipCards({ nations, identity, trustOut, winnerHex, atWar }: RelationshipCardsProps) {
   const myHex = identity?.toHexString();
   const others = nations.filter((n) => n.owner.toHexString() !== myHex);
 
@@ -35,9 +36,9 @@ export function RelationshipCards({ nations, identity, trustOut, winnerHex }: Re
         <span className="ct-label">Relations</span>
         <span style={{ color: 'var(--ink-4)', display: 'inline-flex' }}><IconUsers size={16} /></span>
       </div>
-      <RelGroup tone="ally" label="Allies" nations={allies} trustOut={trustOut} winnerHex={winnerHex} />
-      <RelGroup tone="neutral" label="Neutral" nations={neutral} trustOut={trustOut} winnerHex={winnerHex} />
-      <RelGroup tone="rival" label="Rivals" nations={rivals} trustOut={trustOut} winnerHex={winnerHex} />
+      <RelGroup tone="ally" label="Allies" nations={allies} trustOut={trustOut} winnerHex={winnerHex} atWar={atWar} />
+      <RelGroup tone="neutral" label="Neutral" nations={neutral} trustOut={trustOut} winnerHex={winnerHex} atWar={atWar} />
+      <RelGroup tone="rival" label="Rivals" nations={rivals} trustOut={trustOut} winnerHex={winnerHex} atWar={atWar} />
       {others.length === 0 && (
         <div className="empty" style={{ marginTop: 4 }}>No other nations yet.</div>
       )}
@@ -46,13 +47,14 @@ export function RelationshipCards({ nations, identity, trustOut, winnerHex }: Re
 }
 
 function RelGroup({
-  tone, label, nations, trustOut, winnerHex,
+  tone, label, nations, trustOut, winnerHex, atWar,
 }: {
   tone: Tone;
   label: string;
   nations: NationData[];
   trustOut: Map<string, number>;
   winnerHex?: string;
+  atWar?: Set<string>;
 }) {
   if (nations.length === 0) return null;
   return (
@@ -70,10 +72,10 @@ function RelGroup({
           <div className="nrow" key={hex}>
             <span className="nrow-flag">{flagFor(n.name)}</span>
             <div style={{ minWidth: 0 }}>
-              <div className="nrow-name">{winner && '🏆 '}{n.name}</div>
+              <div className="nrow-name">{winner && '🏆 '}{atWar?.has(hex) && '⚔ '}{n.name}</div>
               <div className="nrow-gdp">GDP {formatGdpShort(n.gdp)}</div>
             </div>
-            <div className={`nrow-trust rel-${tone}`}>{t === undefined ? '—' : t}</div>
+            <div className={`nrow-trust rel-${tone}`}>{atWar?.has(hex) ? 'WAR' : t === undefined ? '—' : t}</div>
           </div>
         );
       })}

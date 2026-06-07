@@ -33,6 +33,14 @@ import {
   consumptionFor,
   shortagePenalty,
   computeGdpValue,
+  warSeverity,
+  warAttrition,
+  WAR_MONEY_COST,
+  WAR_MATERIEL,
+  WAR_STAT_DRAG,
+  WAR_MARKET_DEMAND,
+  WAR_DECLARE_COST,
+  WAR_TRUST_HIT,
   type CommodityKey,
   type OwnedAsset,
   type StatKey,
@@ -155,6 +163,18 @@ const asset = table(
   }
 );
 
+// Active and historical wars between nations.
+const war = table(
+  { name: 'war', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    attacker: t.identity(),
+    defender: t.identity(),
+    startYear: t.f32(),
+    active: t.bool(),
+  }
+);
+
 const tradeOffer = table(
   { name: 'trade_offer', public: true },
   {
@@ -210,7 +230,7 @@ const gdpHistory = table(
 
 const spacetimedb = schema({
   world, nation, stockpile, production, commodityMarket, marketHistory, asset,
-  tradeOffer, trust, worldEvent, gdpHistory,
+  war, tradeOffer, trust, worldEvent, gdpHistory,
 });
 export default spacetimedb;
 
@@ -297,14 +317,33 @@ function resourceValueOf(ctx: Ctx, owner: Identity): number {
   return total;
 }
 
-// Recompute and store a nation's GDP from stats + holdings value + asset tailwinds.
+// Total war-severity dragging a nation's GDP this `year` (sum over active wars).
+function warSeverityFor(ctx: Ctx, owner: Identity, year: number): number {
+  const hex = owner.toHexString();
+  let total = 0;
+  for (const wr of ctx.db.war.iter()) {
+    if (!wr.active) continue;
+    let enemy: Identity | null = null;
+    if (wr.attacker.toHexString() === hex) enemy = wr.defender;
+    else if (wr.defender.toHexString() === hex) enemy = wr.attacker;
+    if (!enemy) continue;
+    const me = ctx.db.nation.owner.find(owner);
+    const en = ctx.db.nation.owner.find(enemy);
+    if (!me || !en) continue;
+    total += warSeverity(year - wr.startYear, me.military, en.military);
+  }
+  return total;
+}
+
+// Recompute and store a nation's GDP from stats + holdings value + asset tailwinds + war drag.
 function recomputeNationGdp(ctx: Ctx, n: ReturnType<typeof requireMyNation>): number {
   const w = getWorld(ctx);
   const tailwind = aggregateTailwinds(ownedAssets(ctx, n.owner), w.year);
   const gdp = computeGdpValue(
     { education: n.education, taxRate: n.taxRate, health: n.health, military: n.military, technology: n.technology },
     resourceValueOf(ctx, n.owner),
-    tailwind.gdp
+    tailwind.gdp,
+    warSeverityFor(ctx, n.owner, w.year)
   );
   ctx.db.nation.owner.update({ ...n, gdp });
   return gdp;
@@ -457,6 +496,10 @@ export const claimNation = spacetimedb.reducer({ name: t.string() }, (ctx, { nam
     for (const s of [...ctx.db.stockpile.by_owner.filter(existing.owner)]) ctx.db.stockpile.id.update({ ...s, owner: ctx.sender });
     for (const p of [...ctx.db.production.by_owner.filter(existing.owner)]) ctx.db.production.id.update({ ...p, owner: ctx.sender });
     for (const a of [...ctx.db.asset.by_owner.filter(existing.owner)]) ctx.db.asset.id.update({ ...a, owner: ctx.sender });
+    for (const wr of [...ctx.db.war.iter()]) {
+      if (wr.attacker.toHexString() === existing.owner.toHexString()) ctx.db.war.id.update({ ...wr, attacker: ctx.sender });
+      else if (wr.defender.toHexString() === existing.owner.toHexString()) ctx.db.war.id.update({ ...wr, defender: ctx.sender });
+    }
     ctx.db.nation.owner.delete(existing.owner);
     const taken = { ...existing, owner: ctx.sender };
     ctx.db.nation.insert(taken);
@@ -600,6 +643,44 @@ export const respondTrade = spacetimedb.reducer({ offerId: t.u64(), approve: t.b
   ctx.db.tradeOffer.id.delete(offerId);
 });
 
+// ---------- war ----------
+export const declareWar = spacetimedb.reducer({ target: t.identity() }, (ctx, { target }) => {
+  const w = requireRunning(ctx);
+  const me = requireMyNation(ctx);
+  if (target.toHexString() === ctx.sender.toHexString()) throw new Error('cannot declare war on yourself');
+  const enemy = ctx.db.nation.owner.find(target);
+  if (!enemy) throw new Error('target nation does not exist');
+  for (const wr of ctx.db.war.iter()) {
+    if (!wr.active) continue;
+    const a = wr.attacker.toHexString(), d = wr.defender.toHexString();
+    const me2 = ctx.sender.toHexString(), t2 = target.toHexString();
+    if ((a === me2 && d === t2) || (a === t2 && d === me2)) throw new Error('already at war with them');
+  }
+  ctx.db.war.insert({ id: 0n, attacker: ctx.sender, defender: target, startYear: w.year, active: true });
+  ctx.db.nation.owner.update({ ...me, money: me.money > toBig(WAR_DECLARE_COST) ? me.money - toBig(WAR_DECLARE_COST) : 0n });
+  bumpTrust(ctx, ctx.sender, target, -WAR_TRUST_HIT);
+  bumpTrust(ctx, target, ctx.sender, -WAR_TRUST_HIT);
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(ctx.sender)!);
+  recomputeNationGdp(ctx, ctx.db.nation.owner.find(target)!);
+  logEvent(ctx, me.name, `⚔ ${me.name} declared war on ${enemy.name}.`);
+});
+
+export const makePeace = spacetimedb.reducer({ warId: t.u64() }, (ctx, { warId }) => {
+  requireRunning(ctx);
+  const wr = ctx.db.war.id.find(warId);
+  if (!wr || !wr.active) throw new Error('war not found');
+  const hex = ctx.sender.toHexString();
+  if (wr.attacker.toHexString() !== hex && wr.defender.toHexString() !== hex) throw new SenderError('not a belligerent in this war');
+  ctx.db.war.id.update({ ...wr, active: false });
+  bumpTrust(ctx, wr.attacker, wr.defender, 10);
+  bumpTrust(ctx, wr.defender, wr.attacker, 10);
+  const a = ctx.db.nation.owner.find(wr.attacker);
+  const d = ctx.db.nation.owner.find(wr.defender);
+  if (a) recomputeNationGdp(ctx, a);
+  if (d) recomputeNationGdp(ctx, d);
+  if (a && d) logEvent(ctx, a.name, `🕊 ${a.name} and ${d.name} signed peace.`);
+});
+
 // ---------- yearly settlement ----------
 function settleYear(ctx: Ctx) {
   const w = getWorld(ctx);
@@ -647,6 +728,33 @@ function settleYear(ctx: Ctx) {
     ctx.db.nation.owner.update({ ...n, money, education, health, military, technology });
   }
 
+  // War attrition: each active war drains money, materiel (oil/steel) and military
+  // from both sides, and lifts oil/steel demand on the market.
+  let oilWarDemand = 0;
+  let steelWarDemand = 0;
+  for (const wr of ctx.db.war.iter()) {
+    if (!wr.active) continue;
+    oilWarDemand += WAR_MARKET_DEMAND;
+    steelWarDemand += WAR_MARKET_DEMAND;
+    const duration = newYear - wr.startYear;
+    for (const side of [wr.attacker, wr.defender]) {
+      const enemy = side.toHexString() === wr.attacker.toHexString() ? wr.defender : wr.attacker;
+      const n = ctx.db.nation.owner.find(side);
+      const en = ctx.db.nation.owner.find(enemy);
+      if (!n || !en) continue;
+      const cost = toBig(WAR_MONEY_COST * (1 + duration * 0.2));
+      ctx.db.nation.owner.update({
+        ...n,
+        money: n.money > cost ? n.money - cost : 0n,
+        military: Math.max(0, n.military - warAttrition(n.military, en.military)),
+        education: Math.max(0, n.education - WAR_STAT_DRAG),
+        health: Math.max(0, n.health - WAR_STAT_DRAG),
+      });
+      addStockpile(ctx, side, 'oil', -toBig(WAR_MATERIEL));
+      addStockpile(ctx, side, 'steel', -toBig(WAR_MATERIEL));
+    }
+  }
+
   // Market update per commodity (uses post-production/consumption stockpiles).
   for (const c of COMMODITY_KEYS) {
     const m = ctx.db.commodityMarket.commodity.find(c);
@@ -656,8 +764,9 @@ function settleYear(ctx: Ctx) {
     let prod = 0;
     for (const row of ctx.db.stockpile.iter()) if (row.commodity === c) stocks += Number(row.amount);
     for (const row of ctx.db.production.iter()) if (row.commodity === c) prod += Number(row.perYear);
+    const warDemand = c === 'oil' ? oilWarDemand : c === 'steel' ? steelWarDemand : 0;
     const globalSupply = def.baseSupply + stocks + prod;
-    const globalDemand = def.baseDemand + nations.length * consumptionFor(c) + m.recentBuyVolume;
+    const globalDemand = def.baseDemand + nations.length * consumptionFor(c) + m.recentBuyVolume + warDemand;
     const scarcity = computeScarcity(globalSupply, globalDemand);
     const volatility = computeVolatility(recentPrices(ctx, c));
     const target = computeTargetPrice(
@@ -694,7 +803,8 @@ function settleYear(ctx: Ctx) {
     const gdp = computeGdpValue(
       { education: cur.education, taxRate: cur.taxRate, health: cur.health, military: cur.military, technology: cur.technology },
       resourceValueOf(ctx, n.owner),
-      tailwind.gdp
+      tailwind.gdp,
+      warSeverityFor(ctx, n.owner, newYear)
     );
     ctx.db.nation.owner.update({ ...cur, gdp });
     ctx.db.gdpHistory.insert({ id: 0n, owner: n.owner, year: newYear, gdp });
@@ -741,6 +851,7 @@ export const resetGame = spacetimedb.reducer((ctx) => {
   for (const m of [...ctx.db.commodityMarket.iter()]) ctx.db.commodityMarket.commodity.delete(m.commodity);
   for (const h of [...ctx.db.marketHistory.iter()]) ctx.db.marketHistory.id.delete(h.id);
   for (const a of [...ctx.db.asset.iter()]) ctx.db.asset.id.delete(a.id);
+  for (const wr of [...ctx.db.war.iter()]) ctx.db.war.id.delete(wr.id);
   for (const o of [...ctx.db.tradeOffer.iter()]) ctx.db.tradeOffer.id.delete(o.id);
   for (const r of [...ctx.db.trust.iter()]) ctx.db.trust.id.delete(r.id);
   for (const e of [...ctx.db.worldEvent.iter()]) ctx.db.worldEvent.id.delete(e.id);

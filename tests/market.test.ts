@@ -21,10 +21,14 @@ import {
   smoothPrice,
   supplyDemandMultiplier,
   taxHarvest,
+  warSeverity,
+  warAttrition,
   CRISIS_MAX_FACTOR,
   MAX_FACTOR,
   MIN_FACTOR,
   VOLUME_DECAY,
+  WAR_SEVERITY_CAP,
+  WAR_GDP_FLOOR,
 } from '../spacetimedb/src/market';
 
 describe('price movement', () => {
@@ -184,5 +188,38 @@ describe('gdp', () => {
     const baseline = computeGdpValue(stats, 0, 0);
     expect(computeGdpValue(stats, 10_000, 0)).toBeGreaterThan(baseline);
     expect(computeGdpValue(stats, 0, 500)).toBeGreaterThan(baseline);
+  });
+});
+
+describe('war', () => {
+  it('severity grows each year the war continues', () => {
+    const y0 = warSeverity(0, 0.5, 0.5);
+    const y3 = warSeverity(3, 0.5, 0.5);
+    const y8 = warSeverity(8, 0.5, 0.5);
+    expect(y3).toBeGreaterThan(y0);
+    expect(y8).toBeGreaterThan(y3);
+  });
+
+  it('hits the militarily weaker side harder', () => {
+    const weaker = warSeverity(2, 0.2, 0.9);
+    const stronger = warSeverity(2, 0.9, 0.2);
+    expect(weaker).toBeGreaterThan(stronger);
+  });
+
+  it('severity is capped per war', () => {
+    expect(warSeverity(100, 0, 1)).toBeLessThanOrEqual(WAR_SEVERITY_CAP + 1e-9);
+  });
+
+  it('war drags GDP down and respects the floor', () => {
+    const stats = { education: 0.5, taxRate: 0.2, health: 0.5, military: 0.3, technology: 0.4 };
+    const peace = computeGdpValue(stats, 5000, 200, 0);
+    const atWar = computeGdpValue(stats, 5000, 200, 0.3);
+    expect(atWar).toBeLessThan(peace);
+    // total severity above 1 still leaves at least the floor fraction
+    expect(computeGdpValue(stats, 5000, 200, 5)).toBeGreaterThanOrEqual(peace * WAR_GDP_FLOOR - 1e-6);
+  });
+
+  it('the losing side suffers more military attrition', () => {
+    expect(warAttrition(0.2, 0.9)).toBeGreaterThan(warAttrition(0.9, 0.2));
   });
 });

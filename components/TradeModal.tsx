@@ -3,16 +3,18 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { Empty, Field } from './shared';
-import { IconExchange, IconCheck, IconX, IconArrowRight } from './icons';
+import { IconExchange, IconCheck, IconX, IconArrowRight, IconShield } from './icons';
 import { flagFor } from '../lib/countries';
 import { relativeTime } from '../lib/format';
 import { COMMODITIES, COMMODITY_KEYS } from '../spacetimedb/src/market';
 import type { NationData } from '../lib/spacetimedb-server';
 import type { Identity } from 'spacetimedb';
 import TradeOfferRow from '../src/module_bindings/trade_offer_table';
+import WarRow from '../src/module_bindings/war_table';
 import type { Infer } from 'spacetimedb';
 
 type TradeOfferData = Infer<typeof TradeOfferRow>;
+type WarData = Infer<typeof WarRow>;
 
 export interface TradeModalProps {
   open: boolean;
@@ -23,16 +25,20 @@ export interface TradeModalProps {
   incoming: TradeOfferData[];
   outgoing: TradeOfferData[];
   stock: Record<string, number>;
+  wars: WarData[];
+  currentYear: number;
   onPropose: (args: { to: Identity; giveCommodity: string; giveAmount: bigint; getCommodity: string; getAmount: bigint }) => void;
   onApprove: (id: bigint) => void;
   onReject: (id: bigint) => void;
+  onDeclareWar: (target: Identity) => void;
+  onMakePeace: (warId: bigint) => void;
 }
 
-type Tab = 'incoming' | 'propose' | 'pending';
+type Tab = 'incoming' | 'propose' | 'pending' | 'war';
 const label = (c: string) => COMMODITIES[c as keyof typeof COMMODITIES]?.label ?? c;
 
 export function TradeModal(props: TradeModalProps) {
-  const { open, onClose, myNation, nations, isActive, incoming, outgoing, stock, onPropose, onApprove, onReject } = props;
+  const { open, onClose, myNation, nations, isActive, incoming, outgoing, stock, wars, currentYear, onPropose, onApprove, onReject, onDeclareWar, onMakePeace } = props;
   const [tab, setTab] = useState<Tab>('incoming');
   if (!open) return null;
 
@@ -48,11 +54,12 @@ export function TradeModal(props: TradeModalProps) {
     { id: 'incoming', label: 'Incoming', count: incoming.length },
     { id: 'propose', label: 'Propose' },
     { id: 'pending', label: 'Pending', count: outgoing.length },
+    { id: 'war', label: 'War', count: wars.length },
   ];
   const nameOf = (hex: string) => nations.find((n) => n.owner.toHexString() === hex)?.name ?? 'Unknown';
 
   return (
-    <Modal open={open} onClose={onClose} icon={<IconExchange />} title="Diplomacy & trade" sub="Swap commodities with other nations" width={600}>
+    <Modal open={open} onClose={onClose} icon={<IconExchange />} title="Diplomacy & trade" sub="Trade commodities · declare or end wars" width={600}>
       <div className="segmented">
         {tabs.map((t) => (
           <button key={t.id} type="button" className="seg" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>
@@ -83,6 +90,10 @@ export function TradeModal(props: TradeModalProps) {
 
       {tab === 'propose' && (
         <ProposeForm myNation={myNation} nations={nations} isActive={isActive} stock={stock} onPropose={onPropose} onSent={() => setTab('pending')} />
+      )}
+
+      {tab === 'war' && (
+        <WarTab myNation={myNation} nations={nations} isActive={isActive} wars={wars} currentYear={currentYear} onDeclareWar={onDeclareWar} onMakePeace={onMakePeace} />
       )}
 
       {tab === 'pending' && (
@@ -137,6 +148,70 @@ function OfferCard({ offer, fromName, isActive, onApprove, onReject }: {
       <div className="offer-actions">
         <button className="btn btn-soft-neg" disabled={!isActive} onClick={onReject}><IconX size={15} />Reject</button>
         <button className="btn btn-pos" disabled={!isActive} onClick={onApprove}><IconCheck size={15} />Approve</button>
+      </div>
+    </div>
+  );
+}
+
+function WarTab({ myNation, nations, isActive, wars, currentYear, onDeclareWar, onMakePeace }: {
+  myNation: NationData; nations: readonly NationData[]; isActive: boolean; wars: WarData[]; currentYear: number;
+  onDeclareWar: (target: Identity) => void; onMakePeace: (warId: bigint) => void;
+}) {
+  const myHex = myNation.owner.toHexString();
+  const enemyHexOf = (w: WarData) => (w.attacker.toHexString() === myHex ? w.defender.toHexString() : w.attacker.toHexString());
+  const atWar = new Set(wars.map(enemyHexOf));
+  const nationOf = (hex: string) => nations.find((n) => n.owner.toHexString() === hex);
+  const peaceable = nations.filter((n) => n.owner.toHexString() !== myHex && !atWar.has(n.owner.toHexString()));
+  const mil = (n?: NationData) => (n ? Math.round(n.military * 100) : 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="block">
+        <span className="eyebrow">Your wars</span>
+        {wars.length === 0 ? (
+          <Empty>Not at war. Peace is good for GDP.</Empty>
+        ) : (
+          wars.map((w) => {
+            const enemy = nationOf(enemyHexOf(w));
+            const years = Math.max(0, Math.round((currentYear - w.startYear) * 100) / 100);
+            return (
+              <div className="offer" key={w.id.toString()}>
+                <div className="offer-top">
+                  <span className="offer-flag">{flagFor(enemy?.name ?? '')}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="offer-who">{enemy?.name ?? 'Unknown'}</div>
+                    <div className="offer-when">{w.attacker.toHexString() === myHex ? 'You declared' : 'Declared on you'} · {years} yr{years === 1 ? '' : 's'} · enemy mil {mil(enemy)}</div>
+                  </div>
+                  <span className="chip chip-neg">⚔ At war</span>
+                </div>
+                <div className="offer-actions">
+                  <button className="btn btn-pos" disabled={!isActive} onClick={() => onMakePeace(w.id)}>Sue for peace</button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="block">
+        <span className="eyebrow">Declare war · your military {mil(myNation)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
+          {peaceable.map((n) => (
+            <div className="nrow" key={n.owner.toHexString()} style={{ gridTemplateColumns: '26px 1fr auto' }}>
+              <span className="nrow-flag">{flagFor(n.name)}</span>
+              <div style={{ minWidth: 0 }}>
+                <div className="nrow-name">{n.name}</div>
+                <div className="nrow-gdp">Military {mil(n)}{mil(n) > mil(myNation) ? ' · stronger' : ''}</div>
+              </div>
+              <button className="btn btn-soft-neg btn-sm" disabled={!isActive} onClick={() => onDeclareWar(n.owner)}>
+                <IconShield size={14} />Declare
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+          War cuts both nations&rsquo; GDP every year it lasts — worse the longer it runs and the weaker your military.
+        </div>
       </div>
     </div>
   );

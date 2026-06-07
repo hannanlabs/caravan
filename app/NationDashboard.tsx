@@ -54,6 +54,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const [stockpiles] = useTable(tables.stockpile);
   const [marketHist] = useTable(tables.marketHistory);
   const [assets] = useTable(tables.asset);
+  const [warsTable] = useTable(tables.war);
 
   const claim = useReducer(reducers.claimNation);
   const start = useReducer(reducers.startRun);
@@ -65,6 +66,8 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const sell = useReducer(reducers.sellCommodity);
   const build = useReducer(reducers.buildAsset);
   const advance = useReducer(reducers.advanceYear);
+  const declareWar = useReducer(reducers.declareWar);
+  const makePeace = useReducer(reducers.makePeace);
 
   const hydrated = isActive && worldReady && nationsReady;
   const world: WorldData | null = hydrated ? (worlds[0] ?? null) : initialSnapshot.world;
@@ -83,6 +86,10 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
 
   const trustOut = new Map<string, number>();
   for (const r of trustRows) if (r.fromOwner.toHexString() === myHex) trustOut.set(r.toOwner.toHexString(), r.value);
+
+  // My active wars + the set of nations I'm at war with.
+  const myWars = warsTable.filter((w) => w.active && (w.attacker.toHexString() === myHex || w.defender.toHexString() === myHex));
+  const atWar = new Set(myWars.map((w) => (w.attacker.toHexString() === myHex ? w.defender.toHexString() : w.attacker.toHexString())));
 
   // My commodity holdings + their live market value.
   const priceOf = (c: string) => markets.find((m) => m.commodity === c)?.currentPrice ?? COMMODITIES[c as keyof typeof COMMODITIES]?.basePrice ?? 0;
@@ -180,7 +187,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
 
       <div className="grid">
         <div className="col">
-          <RelationshipCards nations={sortedByGdp} identity={identity} trustOut={trustOut}
+          <RelationshipCards nations={sortedByGdp} identity={identity} trustOut={trustOut} atWar={atWar}
             winnerHex={winner ? winner.owner.toHexString() : undefined} />
         </div>
         <div className="col">
@@ -222,9 +229,13 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
         incoming={incomingOffers}
         outgoing={outgoingOffers}
         stock={myStock}
+        wars={myWars}
+        currentYear={world.year}
         onPropose={(args) => propose(args)}
         onApprove={(id) => respond({ offerId: id, approve: true })}
         onReject={(id) => respond({ offerId: id, approve: false })}
+        onDeclareWar={(target) => declareWar({ target })}
+        onMakePeace={(warId) => makePeace({ warId })}
       />
       <EducationModal open={openModal === 'education'} onClose={() => setOpenModal(null)} isActive={isActive} hasNation={!!myNation}
         money={myNation ? Number(myNation.money) : 0} stock={myStock} ownedCounts={ownedCounts} onBuild={(k) => build({ typeKey: k })} />

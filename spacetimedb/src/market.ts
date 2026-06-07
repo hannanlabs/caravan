@@ -46,12 +46,12 @@ export interface CommodityDef {
 }
 
 export const COMMODITIES: Record<CommodityKey, CommodityDef> = {
-  oil:         { key: 'oil',         label: 'Oil',         basePrice: 60,  baseSupply: 4000, baseDemand: 4200, consumptionPerNation: 30, shortageStat: null },
-  energy:      { key: 'energy',      label: 'Energy',      basePrice: 50,  baseSupply: 4500, baseDemand: 4600, consumptionPerNation: 40, shortageStat: 'technology' },
-  grain:       { key: 'grain',       label: 'Grain',       basePrice: 20,  baseSupply: 6000, baseDemand: 6000, consumptionPerNation: 60, shortageStat: 'health' },
-  steel:       { key: 'steel',       label: 'Steel',       basePrice: 40,  baseSupply: 3500, baseDemand: 3600, consumptionPerNation: 20, shortageStat: null },
-  medicine:    { key: 'medicine',    label: 'Medicine',    basePrice: 80,  baseSupply: 2000, baseDemand: 2100, consumptionPerNation: 15, shortageStat: 'health' },
-  electronics: { key: 'electronics', label: 'Electronics', basePrice: 100, baseSupply: 1800, baseDemand: 1900, consumptionPerNation: 12, shortageStat: 'technology' },
+  oil:         { key: 'oil',         label: 'Oil',         basePrice: 12, baseSupply: 4000, baseDemand: 4200, consumptionPerNation: 4, shortageStat: null },
+  energy:      { key: 'energy',      label: 'Energy',      basePrice: 10, baseSupply: 4500, baseDemand: 4600, consumptionPerNation: 6, shortageStat: 'technology' },
+  grain:       { key: 'grain',       label: 'Grain',       basePrice: 5,  baseSupply: 6000, baseDemand: 6000, consumptionPerNation: 10, shortageStat: 'health' },
+  steel:       { key: 'steel',       label: 'Steel',       basePrice: 9,  baseSupply: 3500, baseDemand: 3600, consumptionPerNation: 4, shortageStat: null },
+  medicine:    { key: 'medicine',    label: 'Medicine',    basePrice: 16, baseSupply: 2000, baseDemand: 2100, consumptionPerNation: 2, shortageStat: 'health' },
+  electronics: { key: 'electronics', label: 'Electronics', basePrice: 20, baseSupply: 1800, baseDemand: 1900, consumptionPerNation: 1, shortageStat: 'technology' },
 };
 
 export function commodityDef(key: CommodityKey): CommodityDef {
@@ -76,18 +76,18 @@ export interface AssetDef {
 
 export const ASSETS: AssetDef[] = [
   // Military -> military
-  { key: 'tank',         category: 'military',   label: 'Tank Division', costMoney: 200, costs: [{ commodity: 'steel', amount: 10 }],                                       statBoostPerYear: 0.02,  gdpTailwindPerYear: 30,  rampYears: 3, upkeepPerYear: 5 },
-  { key: 'jet',          category: 'military',   label: 'Fighter Wing',  costMoney: 450, costs: [{ commodity: 'steel', amount: 12 }, { commodity: 'electronics', amount: 6 }], statBoostPerYear: 0.035, gdpTailwindPerYear: 55,  rampYears: 4, upkeepPerYear: 12 },
-  { key: 'carrier',      category: 'military',   label: 'Carrier Group', costMoney: 900, costs: [{ commodity: 'steel', amount: 30 }, { commodity: 'oil', amount: 20 }],        statBoostPerYear: 0.06,  gdpTailwindPerYear: 110, rampYears: 6, upkeepPerYear: 25 },
+  { key: 'tank',         category: 'military',   label: 'Tank Division', costMoney: 40,  costs: [{ commodity: 'steel', amount: 6 }],                                        statBoostPerYear: 0.02,  gdpTailwindPerYear: 30,  rampYears: 3, upkeepPerYear: 1 },
+  { key: 'jet',          category: 'military',   label: 'Fighter Wing',  costMoney: 90,  costs: [{ commodity: 'steel', amount: 8 }, { commodity: 'electronics', amount: 4 }], statBoostPerYear: 0.035, gdpTailwindPerYear: 55,  rampYears: 4, upkeepPerYear: 3 },
+  { key: 'carrier',      category: 'military',   label: 'Carrier Group', costMoney: 180, costs: [{ commodity: 'steel', amount: 18 }, { commodity: 'oil', amount: 12 }],       statBoostPerYear: 0.06,  gdpTailwindPerYear: 110, rampYears: 6, upkeepPerYear: 6 },
   // Healthcare -> health
-  { key: 'soup_kitchen', category: 'health',     label: 'Soup Kitchen',  costMoney: 50,  costs: [{ commodity: 'grain', amount: 8 }],                                          statBoostPerYear: 0.015, gdpTailwindPerYear: 12,  rampYears: 2, upkeepPerYear: 2 },
-  { key: 'hospital',     category: 'health',     label: 'Hospital',      costMoney: 300, costs: [{ commodity: 'medicine', amount: 15 }],                                      statBoostPerYear: 0.04,  gdpTailwindPerYear: 60,  rampYears: 4, upkeepPerYear: 10 },
+  { key: 'soup_kitchen', category: 'health',     label: 'Soup Kitchen',  costMoney: 10,  costs: [{ commodity: 'grain', amount: 4 }],                                         statBoostPerYear: 0.015, gdpTailwindPerYear: 12,  rampYears: 2, upkeepPerYear: 1 },
+  { key: 'hospital',     category: 'health',     label: 'Hospital',      costMoney: 60,  costs: [{ commodity: 'medicine', amount: 8 }],                                      statBoostPerYear: 0.04,  gdpTailwindPerYear: 60,  rampYears: 4, upkeepPerYear: 2 },
   // Education -> education
-  { key: 'school',       category: 'education',  label: 'School',        costMoney: 100, costs: [],                                                                           statBoostPerYear: 0.025, gdpTailwindPerYear: 25,  rampYears: 3, upkeepPerYear: 4 },
-  { key: 'university',   category: 'education',  label: 'University',     costMoney: 400, costs: [{ commodity: 'electronics', amount: 8 }],                                    statBoostPerYear: 0.05,  gdpTailwindPerYear: 80,  rampYears: 5, upkeepPerYear: 14 },
+  { key: 'school',       category: 'education',  label: 'School',        costMoney: 20,  costs: [],                                                                          statBoostPerYear: 0.025, gdpTailwindPerYear: 25,  rampYears: 3, upkeepPerYear: 1 },
+  { key: 'university',   category: 'education',  label: 'University',     costMoney: 80,  costs: [{ commodity: 'electronics', amount: 5 }],                                   statBoostPerYear: 0.05,  gdpTailwindPerYear: 80,  rampYears: 5, upkeepPerYear: 3 },
   // Technology -> technology
-  { key: 'lab',          category: 'technology', label: 'Research Lab',  costMoney: 350, costs: [{ commodity: 'electronics', amount: 10 }],                                   statBoostPerYear: 0.045, gdpTailwindPerYear: 70,  rampYears: 5, upkeepPerYear: 12 },
-  { key: 'data_center',  category: 'technology', label: 'Data Center',   costMoney: 500, costs: [{ commodity: 'electronics', amount: 12 }, { commodity: 'energy', amount: 15 }], statBoostPerYear: 0.06, gdpTailwindPerYear: 100, rampYears: 5, upkeepPerYear: 18 },
+  { key: 'lab',          category: 'technology', label: 'Research Lab',  costMoney: 70,  costs: [{ commodity: 'electronics', amount: 6 }],                                   statBoostPerYear: 0.045, gdpTailwindPerYear: 70,  rampYears: 5, upkeepPerYear: 3 },
+  { key: 'data_center',  category: 'technology', label: 'Data Center',   costMoney: 100, costs: [{ commodity: 'electronics', amount: 8 }, { commodity: 'energy', amount: 10 }], statBoostPerYear: 0.06, gdpTailwindPerYear: 100, rampYears: 5, upkeepPerYear: 4 },
 ];
 
 export const ASSET_BY_KEY: Record<string, AssetDef> = (() => {
@@ -273,7 +273,7 @@ export function aggregateTailwinds(assets: OwnedAsset[], year: number): Tailwind
 // ============================================================
 // Annual economy helpers
 // ============================================================
-export const TAX_YIELD = 0.15;
+export const TAX_YIELD = 0.5;
 export function taxHarvest(gdp: number, taxRate: number): number {
   return Math.max(0, gdp * clamp(taxRate, 0, 1) * TAX_YIELD);
 }
@@ -289,19 +289,53 @@ export function shortagePenalty(statValue: number, inShortage: boolean, perYear 
 }
 
 // ============================================================
-// GDP — score reflects stats, live market value of holdings, and asset tailwinds.
+// War — declaring/continuing war drags GDP, compounding each year, and hits the
+// militarily weaker side harder. Severity is a multiplicative GDP penalty so it
+// scales with nation size. War also consumes money + oil/steel and causes
+// military attrition (applied in settlement), and lifts oil/steel demand.
+// ============================================================
+export const WAR_SEVERITY = 0.06;          // base GDP penalty per active war (year 0)
+export const WAR_GROWTH = 0.25;            // +25% penalty for each year the war continues
+export const WAR_MILITARY_FACTOR = 1.5;    // weaker military => bigger penalty
+export const WAR_SEVERITY_CAP = 0.5;       // max penalty from a single war
+export const WAR_GDP_FLOOR = 0.1;          // GDP can fall to at most 10% under total war
+export const WAR_MONEY_COST = 30;          // $M/yr base war spending per side
+export const WAR_MATERIEL = 4;             // oil & steel consumed per side per war-year
+export const WAR_MILITARY_ATTRITION = 0.03;// military lost per war-year (weaker side loses more)
+export const WAR_STAT_DRAG = 0.01;         // education/health lost per war-year
+export const WAR_MARKET_DEMAND = 600;      // extra oil/steel demand per active war
+export const WAR_DECLARE_COST = 60;        // $M one-time mobilization on declaring
+export const WAR_TRUST_HIT = 40;           // trust drop on declaring war
+
+// Per-war GDP severity given how long it's lasted and the military gap.
+export function warSeverity(durationYears: number, myMilitary: number, enemyMilitary: number): number {
+  const disadvantage = Math.max(0, enemyMilitary - myMilitary);
+  const s = WAR_SEVERITY * (1 + Math.max(0, durationYears) * WAR_GROWTH) * (1 + disadvantage * WAR_MILITARY_FACTOR);
+  return Math.min(WAR_SEVERITY_CAP, s);
+}
+
+// Yearly military attrition for one side (the weaker side bleeds faster).
+export function warAttrition(myMilitary: number, enemyMilitary: number): number {
+  const losing = myMilitary < enemyMilitary;
+  return WAR_MILITARY_ATTRITION * (losing ? 1.6 : 0.7);
+}
+
+// ============================================================
+// GDP — score reflects stats, live market value of holdings, asset tailwinds,
+// and a multiplicative war penalty.
 // ============================================================
 export interface GdpStats { education: number; taxRate: number; health: number; military: number; technology: number; }
 export const RESOURCE_VALUE_WEIGHT = 0.2;
 
-export function computeGdpValue(n: GdpStats, resourceValue: number, tailwindGdp: number): number {
+export function computeGdpValue(n: GdpStats, resourceValue: number, tailwindGdp: number, warSeverityTotal = 0): number {
   const base = 1000;
   const humanCapital = 1 + n.education;
   const healthFactor = 1 + n.health * 0.5;
   const techFactor = 1 + n.technology * 0.5;
   const militaryFactor = 1 + n.military * 0.15;
   const taxDrag = 1 - n.taxRate * 0.5;
-  return base * humanCapital * healthFactor * techFactor * militaryFactor * taxDrag
+  const core = base * humanCapital * healthFactor * techFactor * militaryFactor * taxDrag
     + Math.max(0, resourceValue) * RESOURCE_VALUE_WEIGHT
     + Math.max(0, tailwindGdp);
+  return Math.max(0, core * clamp(1 - warSeverityTotal, WAR_GDP_FLOOR, 1));
 }

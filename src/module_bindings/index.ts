@@ -38,6 +38,8 @@ import AdvanceYearReducer from "./advance_year_reducer";
 import BuildAssetReducer from "./build_asset_reducer";
 import BuyCommodityReducer from "./buy_commodity_reducer";
 import ClaimNationReducer from "./claim_nation_reducer";
+import DeclareWarReducer from "./declare_war_reducer";
+import MakePeaceReducer from "./make_peace_reducer";
 import ProposeTradeReducer from "./propose_trade_reducer";
 import ResetGameReducer from "./reset_game_reducer";
 import RespondTradeReducer from "./respond_trade_reducer";
@@ -58,6 +60,7 @@ import ProductionRow from "./production_table";
 import StockpileRow from "./stockpile_table";
 import TradeOfferRow from "./trade_offer_table";
 import TrustRow from "./trust_table";
+import WarRow from "./war_table";
 import WorldRow from "./world_table";
 import WorldEventRow from "./world_event_table";
 
@@ -193,6 +196,17 @@ const tablesSchema = __schema({
       { name: 'trust_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, TrustRow),
+  war: __table({
+    name: 'war',
+    indexes: [
+      { accessor: 'id', name: 'war_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'war_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, WarRow),
   world: __table({
     name: 'world',
     indexes: [
@@ -223,6 +237,8 @@ const reducersSchema = __reducers(
   __reducerSchema("build_asset", BuildAssetReducer),
   __reducerSchema("buy_commodity", BuyCommodityReducer),
   __reducerSchema("claim_nation", ClaimNationReducer),
+  __reducerSchema("declare_war", DeclareWarReducer),
+  __reducerSchema("make_peace", MakePeaceReducer),
   __reducerSchema("propose_trade", ProposeTradeReducer),
   __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("respond_trade", RespondTradeReducer),

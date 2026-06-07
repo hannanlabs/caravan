@@ -102,6 +102,15 @@ export const Trust = __t.object("Trust", {
 });
 export type Trust = __Infer<typeof Trust>;
 
+export const War = __t.object("War", {
+  id: __t.u64(),
+  attacker: __t.identity(),
+  defender: __t.identity(),
+  startYear: __t.f32(),
+  active: __t.bool(),
+});
+export type War = __Infer<typeof War>;
+
 export const World = __t.object("World", {
   id: __t.u8(),
   year: __t.f32(),

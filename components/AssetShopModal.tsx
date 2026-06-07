@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Modal } from './Modal';
 import { Empty } from './shared';
 import { assetsForCategory, canBuildAsset, COMMODITIES, type AssetCategory } from '../spacetimedb/src/market';
+import { formatPrice } from '../lib/format';
 
 export interface AssetShopModalProps {
   open: boolean;
@@ -40,6 +41,15 @@ export function AssetShopModal(props: AssetShopModalProps) {
         {assets.map((a) => {
           const check = canBuildAsset(money, stock, a);
           const owned = ownedCounts[a.key] ?? 0;
+          let reason = '';
+          if (!check.ok) {
+            if (check.missing === 'money') {
+              reason = `Need ${formatPrice(a.costMoney)} · you have ${formatPrice(money)}`;
+            } else if (check.missing) {
+              const need = a.costs.find((c) => c.commodity === check.missing);
+              reason = `Need ${need?.amount ?? 0} ${COMMODITIES[check.missing].label} · you have ${stock[check.missing] ?? 0}`;
+            }
+          }
           return (
             <div className="asset-card" key={a.key}>
               <div className="a-icon">{icon}</div>
@@ -59,10 +69,12 @@ export function AssetShopModal(props: AssetShopModalProps) {
                     </span>
                   ))}
                 </div>
+                {reason && <div className="asset-lack">{reason}</div>}
               </div>
               <button
                 className="btn btn-primary btn-sm"
                 disabled={!isActive || !check.ok}
+                title={reason || undefined}
                 onClick={() => onBuild(a.key)}
               >
                 Build

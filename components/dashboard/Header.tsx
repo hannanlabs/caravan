@@ -141,7 +141,7 @@ function ActionsBody(props: HeaderProps) {
   }
 
   const items: { id: ActionModal; icon: React.ReactNode; label: string; badge?: number }[] = [
-    { id: 'trade', icon: <IconExchange />, label: 'Trade', badge: incomingCount },
+    { id: 'trade', icon: <IconExchange />, label: 'Diplomacy', badge: incomingCount },
     { id: 'education', icon: <IconBook />, label: 'Education' },
     { id: 'healthcare', icon: <IconPulse />, label: 'Healthcare' },
     { id: 'military', icon: <IconShield />, label: 'Military' },
