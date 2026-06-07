@@ -151,13 +151,13 @@ function ActionsBody(props: HeaderProps) {
   }
 
   // Running → action grid.
-  const items: { id: ActionModal; icon: React.ReactNode; label: string; sub: string; badge?: number }[] = [
-    { id: 'trade', icon: <IconExchange />, label: 'Trade', sub: 'Diplomacy', badge: incomingCount },
-    { id: 'education', icon: <IconBook />, label: 'Education', sub: 'Invest' },
-    { id: 'healthcare', icon: <IconPulse />, label: 'Healthcare', sub: 'Invest' },
-    { id: 'military', icon: <IconShield />, label: 'Military', sub: 'Invest' },
-    { id: 'technology', icon: <IconCpu />, label: 'Technology', sub: 'Invest' },
-    { id: 'taxes', icon: <IconBank />, label: 'Taxes', sub: 'Policy' },
+  const items: { id: ActionModal; icon: React.ReactNode; label: string; badge?: number }[] = [
+    { id: 'trade', icon: <IconExchange />, label: 'Trade', badge: incomingCount },
+    { id: 'education', icon: <IconBook />, label: 'Education' },
+    { id: 'healthcare', icon: <IconPulse />, label: 'Healthcare' },
+    { id: 'military', icon: <IconShield />, label: 'Military' },
+    { id: 'technology', icon: <IconCpu />, label: 'Technology' },
+    { id: 'taxes', icon: <IconBank />, label: 'Taxes' },
   ];
 
   return (
@@ -174,7 +174,6 @@ function ActionsBody(props: HeaderProps) {
             {notice && <span className="a-badge">{it.badge}</span>}
             <div className="a-icon">{it.icon}</div>
             <div className="a-label">{it.label}</div>
-            <div className="a-sub">{it.sub}</div>
           </button>
         );
       })}
