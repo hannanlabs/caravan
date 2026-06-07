@@ -13,6 +13,11 @@ const WorldStatus = t.enum('WorldStatus', {
   ended: t.unit(),
 });
 
+const Resource = t.enum('Resource', {
+  goods: t.unit(),
+  energy: t.unit(),
+});
+
 const world = table(
   { name: 'world', public: true },
   {
@@ -35,7 +40,37 @@ const nation = table(
   }
 );
 
-const spacetimedb = schema({ world, nation });
+const tradeOffer = table(
+  { name: 'trade_offer', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    fromOwner: t.identity().index('btree'),
+    toOwner: t.identity().index('btree'),
+    giveResource: Resource,
+    giveAmount: t.u64(),
+    getResource: Resource,
+    getAmount: t.u64(),
+    createdAt: t.timestamp(),
+  }
+);
+
+const trust = table(
+  {
+    name: 'trust',
+    public: true,
+    indexes: [
+      { accessor: 'by_pair', algorithm: 'btree', columns: ['fromOwner', 'toOwner'] },
+    ],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    fromOwner: t.identity(),
+    toOwner: t.identity(),
+    value: t.u8(),
+  }
+);
+
+const spacetimedb = schema({ world, nation, tradeOffer, trust });
 export default spacetimedb;
 
 const STARTING_MONEY = 1000n;
@@ -70,6 +105,45 @@ function requireRunning(ctx: Ctx) {
 }
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+type ResourceVal = { tag: 'goods' } | { tag: 'energy' };
+
+function getResourceAmount(n: { goods: bigint; energy: bigint }, res: ResourceVal): bigint {
+  return res.tag === 'goods' ? n.goods : n.energy;
+}
+
+function withResource<T extends { goods: bigint; energy: bigint }>(
+  n: T,
+  res: ResourceVal,
+  amount: bigint
+): T {
+  return res.tag === 'goods' ? { ...n, goods: amount } : { ...n, energy: amount };
+}
+
+const TRUST_START = 50;
+const TRUST_MIN = 0;
+const TRUST_MAX = 100;
+
+function clampTrust(v: number): number {
+  return Math.max(TRUST_MIN, Math.min(TRUST_MAX, v));
+}
+
+function bumpTrust(ctx: Ctx, from: { toHexString(): string } & any, to: { toHexString(): string } & any, delta: number) {
+  const existing = [...ctx.db.trust.by_pair.filter([from, to])][0];
+  if (existing) {
+    ctx.db.trust.id.update({
+      ...existing,
+      value: clampTrust(existing.value + delta),
+    });
+  } else {
+    ctx.db.trust.insert({
+      id: 0n,
+      fromOwner: from,
+      toOwner: to,
+      value: clampTrust(TRUST_START + delta),
+    });
+  }
+}
 
 function tickAll(ctx: Ctx) {
   for (const n of [...ctx.db.nation.iter()]) {
@@ -150,6 +224,91 @@ export const setTax = spacetimedb.reducer(
     requireRunning(ctx);
     const n = requireMyNation(ctx);
     ctx.db.nation.owner.update({ ...n, taxRate: clamp01(rate) });
+    advanceTime(ctx);
+  }
+);
+
+export const proposeTrade = spacetimedb.reducer(
+  {
+    to: t.identity(),
+    giveResource: Resource,
+    giveAmount: t.u64(),
+    getResource: Resource,
+    getAmount: t.u64(),
+  },
+  (ctx, { to, giveResource, giveAmount, getResource, getAmount }) => {
+    requireRunning(ctx);
+    const me = requireMyNation(ctx);
+    if (to.toHexString() === ctx.sender.toHexString()) {
+      throw new Error('cannot trade with yourself');
+    }
+    const counterparty = ctx.db.nation.owner.find(to);
+    if (!counterparty) throw new Error('target nation does not exist');
+    if (giveAmount === 0n || getAmount === 0n) {
+      throw new Error('amounts must be > 0');
+    }
+    if (getResourceAmount(me, giveResource) < giveAmount) {
+      throw new Error(`insufficient ${giveResource.tag} to offer`);
+    }
+    ctx.db.tradeOffer.insert({
+      id: 0n,
+      fromOwner: ctx.sender,
+      toOwner: to,
+      giveResource,
+      giveAmount,
+      getResource,
+      getAmount,
+      createdAt: ctx.timestamp,
+    });
+    advanceTime(ctx);
+  }
+);
+
+export const respondTrade = spacetimedb.reducer(
+  { offerId: t.u64(), approve: t.bool() },
+  (ctx, { offerId, approve }) => {
+    requireRunning(ctx);
+    const offer = ctx.db.tradeOffer.id.find(offerId);
+    if (!offer) throw new Error('offer not found');
+    if (offer.toOwner.toHexString() !== ctx.sender.toHexString()) {
+      throw new SenderError('only the recipient can respond');
+    }
+
+    if (!approve) {
+      // Proposer (offer.fromOwner) loses trust in the rejecter (offer.toOwner).
+      bumpTrust(ctx, offer.fromOwner, offer.toOwner, -5);
+      ctx.db.tradeOffer.id.delete(offerId);
+      advanceTime(ctx);
+      return;
+    }
+
+    // Approve path: re-check feasibility on both sides at response time.
+    const proposer = ctx.db.nation.owner.find(offer.fromOwner);
+    const responder = ctx.db.nation.owner.find(offer.toOwner);
+    if (!proposer || !responder) throw new Error('a party no longer exists');
+
+    if (getResourceAmount(proposer, offer.giveResource) < offer.giveAmount) {
+      throw new Error('proposer can no longer cover the offer');
+    }
+    if (getResourceAmount(responder, offer.getResource) < offer.getAmount) {
+      throw new Error('you do not have enough to fulfil the offer');
+    }
+
+    // Atomic swap: proposer loses giveAmount of giveResource, gains getAmount of getResource.
+    // Responder is the mirror.
+    let p = proposer;
+    let r = responder;
+    p = withResource(p, offer.giveResource, getResourceAmount(p, offer.giveResource) - offer.giveAmount);
+    r = withResource(r, offer.giveResource, getResourceAmount(r, offer.giveResource) + offer.giveAmount);
+    r = withResource(r, offer.getResource, getResourceAmount(r, offer.getResource) - offer.getAmount);
+    p = withResource(p, offer.getResource, getResourceAmount(p, offer.getResource) + offer.getAmount);
+
+    ctx.db.nation.owner.update(p);
+    ctx.db.nation.owner.update(r);
+    // Both parties gain trust on a successful trade.
+    bumpTrust(ctx, offer.fromOwner, offer.toOwner, 5);
+    bumpTrust(ctx, offer.toOwner, offer.fromOwner, 5);
+    ctx.db.tradeOffer.id.delete(offerId);
     advanceTime(ctx);
   }
 );
