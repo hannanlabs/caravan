@@ -1,0 +1,8 @@
+{
+  "dev": {
+    "run": "pnpm run dev"
+  },
+  "server": "local",
+  "database": "caravan-rsdsx",
+  "module-path": "./spacetimedb"
+}
