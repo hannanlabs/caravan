@@ -18,8 +18,9 @@ interface NationDashboardProps {
 
 export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const { isActive, identity } = useSpacetimeDB();
-  const [worlds, worldLoading] = useTable(tables.world);
-  const [nations, nationsLoading] = useTable(tables.nation);
+  // useTable returns [rows, subscribeApplied] — second value is TRUE once initial data arrives.
+  const [worlds, worldReady] = useTable(tables.world);
+  const [nations, nationsReady] = useTable(tables.nation);
   const [tradeOffers] = useTable(tables.tradeOffer);
   const [trustRows] = useTable(tables.trust);
 
@@ -30,7 +31,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const propose = useReducer(reducers.proposeTrade);
   const respond = useReducer(reducers.respondTrade);
 
-  const hydrated = isActive && !worldLoading && !nationsLoading;
+  const hydrated = isActive && worldReady && nationsReady;
   const world: WorldData | null = hydrated ? (worlds[0] ?? null) : initialSnapshot.world;
   const nationList: readonly NationData[] = hydrated ? nations : [];
 
@@ -73,13 +74,37 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
   const moneyHistory = useMoneyHistory(world?.year ?? 0, myNation?.money);
 
   if (!world) {
-    return <main className="dash"><div className="pregame card">Connecting to SpacetimeDB…</div></main>;
+    return (
+      <main className="dash">
+        <DebugStrip
+          isActive={isActive}
+          worldReady={worldReady}
+          nationsReady={nationsReady}
+          identity={identity}
+          worldCount={worlds.length}
+          nationCount={nations.length}
+          tradeCount={tradeOffers.length}
+          trustCount={trustRows.length}
+        />
+        <div className="pregame card">Connecting to SpacetimeDB…</div>
+      </main>
+    );
   }
 
   const status = world.status.tag;
 
   return (
     <main className="dash">
+      <DebugStrip
+        isActive={isActive}
+        worldReady={worldReady}
+        nationsReady={nationsReady}
+        identity={identity}
+        worldCount={worlds.length}
+        nationCount={nations.length}
+        tradeCount={tradeOffers.length}
+        trustCount={trustRows.length}
+      />
       <Header
         isActive={isActive}
         myNation={myNation}
@@ -147,6 +172,43 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
 
       <Footer world={world} status={status} nationCount={nationList.length} />
     </main>
+  );
+}
+
+/* ---------- debug strip ---------- */
+
+function DebugStrip({
+  isActive, worldReady, nationsReady, identity, worldCount, nationCount, tradeCount, trustCount,
+}: {
+  isActive: boolean;
+  worldReady: boolean;
+  nationsReady: boolean;
+  identity?: { toHexString(): string };
+  worldCount: number;
+  nationCount: number;
+  tradeCount: number;
+  trustCount: number;
+}) {
+  return (
+    <div style={{
+      background: isActive ? '#1a3550' : '#5a1a1a',
+      border: '1px solid #2a3550',
+      borderRadius: 6,
+      padding: '6px 12px',
+      fontSize: 12,
+      fontFamily: 'monospace',
+      color: '#e5eaf2',
+      display: 'flex',
+      gap: 16,
+      flexWrap: 'wrap',
+    }}>
+      <span>WS: <strong style={{ color: isActive ? '#2ed573' : '#ff4757' }}>{isActive ? 'connected' : 'disconnected'}</strong></span>
+      <span>identity: {identity ? identity.toHexString().slice(0, 12) + '…' : '(none)'}</span>
+      <span>world: {worldCount}{worldReady ? '' : ' (waiting)'}</span>
+      <span>nations: {nationCount}{nationsReady ? '' : ' (waiting)'}</span>
+      <span>trade_offer: {tradeCount}</span>
+      <span>trust: {trustCount}</span>
+    </div>
   );
 }
 
