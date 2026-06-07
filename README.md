@@ -112,8 +112,10 @@ pnpm install
 spacetime dev
 
 # 3. visit
-open http://localhost:3000
+open http://localhost:3001
 ```
+
+> Next.js runs on **3001** (not the default 3000) because SpacetimeDB already listens on 3000 — they used to collide because Spacetime binds IPv4 and Next.js IPv6 on the same port number, leaving the route the browser hits non-deterministic.
 
 Append `?debug=1` to see WebSocket / table-row diagnostics at the top of the dashboard.
 

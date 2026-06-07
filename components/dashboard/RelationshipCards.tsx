@@ -46,14 +46,14 @@ function RelCard({
 }) {
   const toneColor = tone === 'ally' ? '#2ed573' : tone === 'rival' ? '#ff4757' : '#ffc107';
   return (
-    <div className="card">
+    <div className="card" style={{ minHeight: 0 }}>
       <div className="card-title" style={{ color: toneColor }}>
         {title} ({nations.length})
       </div>
       {nations.length === 0 ? (
         <div className="card-empty" style={{ padding: '6px 0', fontSize: 11 }}>None</div>
       ) : (
-        <div className="nation-list">
+        <div className="nation-list" style={{ maxHeight: 240, overflowY: 'auto', paddingRight: 4 }}>
           {nations.map((n) => {
             const hex = n.owner.toHexString();
             const t = trustOut.get(hex);

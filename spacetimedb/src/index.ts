@@ -259,19 +259,52 @@ interface SeedNation {
   health: number;
 }
 
+// Identity helper — bb{nn} is a synthetic hex prefix for seeded bots.
+// Identities are 32 bytes = 64 hex chars.
+const hex = (n: number) => ('bb' + n.toString(16).padStart(2, '0')).padEnd(64, '0');
+
 const SEED_NATIONS: SeedNation[] = [
-  { hex: 'bb01000000000000000000000000000000000000000000000000000000000001',
-    name: 'USA',            money: 23000n, goods: 800n, energy: 700n, education: 0.85, taxRate: 0.27, health: 0.80 },
-  { hex: 'bb02000000000000000000000000000000000000000000000000000000000002',
-    name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30, health: 0.70 },
-  { hex: 'bb03000000000000000000000000000000000000000000000000000000000003',
-    name: 'Japan',          money:  5000n, goods: 400n, energy: 300n, education: 0.90, taxRate: 0.32, health: 0.95 },
-  { hex: 'bb04000000000000000000000000000000000000000000000000000000000004',
-    name: 'United Kingdom', money:  3300n, goods: 250n, energy: 200n, education: 0.85, taxRate: 0.35, health: 0.85 },
-  { hex: 'bb05000000000000000000000000000000000000000000000000000000000005',
-    name: 'India',          money:  3700n, goods: 900n, energy: 600n, education: 0.45, taxRate: 0.18, health: 0.55 },
-  { hex: 'bb06000000000000000000000000000000000000000000000000000000000006',
-    name: 'Brazil',         money:  2100n, goods: 600n, energy: 500n, education: 0.50, taxRate: 0.22, health: 0.65 },
+  // ----- Top economies -----
+  { hex: hex(1),  name: 'USA',            money: 23000n, goods: 800n,  energy: 700n,  education: 0.85, taxRate: 0.27, health: 0.80 },
+  { hex: hex(2),  name: 'China',          money: 17000n, goods: 1200n, energy: 1000n, education: 0.70, taxRate: 0.30, health: 0.70 },
+  { hex: hex(3),  name: 'Germany',        money:  4200n, goods: 400n,  energy: 300n,  education: 0.88, taxRate: 0.38, health: 0.88 },
+  { hex: hex(4),  name: 'Japan',          money:  5000n, goods: 400n,  energy: 300n,  education: 0.90, taxRate: 0.32, health: 0.95 },
+  { hex: hex(5),  name: 'India',          money:  3700n, goods: 900n,  energy: 600n,  education: 0.45, taxRate: 0.18, health: 0.55 },
+  { hex: hex(6),  name: 'United Kingdom', money:  3300n, goods: 250n,  energy: 200n,  education: 0.85, taxRate: 0.35, health: 0.85 },
+  { hex: hex(7),  name: 'France',         money:  3000n, goods: 250n,  energy: 220n,  education: 0.82, taxRate: 0.45, health: 0.90 },
+  { hex: hex(8),  name: 'Italy',          money:  2200n, goods: 220n,  energy: 180n,  education: 0.75, taxRate: 0.42, health: 0.82 },
+  { hex: hex(9),  name: 'Brazil',         money:  2100n, goods: 600n,  energy: 500n,  education: 0.50, taxRate: 0.22, health: 0.65 },
+  { hex: hex(10), name: 'Canada',         money:  2200n, goods: 300n,  energy: 600n,  education: 0.85, taxRate: 0.31, health: 0.88 },
+
+  // ----- South Asia (Pakistan included!) -----
+  { hex: hex(11), name: 'Pakistan',       money:   340n, goods: 200n,  energy: 150n,  education: 0.40, taxRate: 0.13, health: 0.50 },
+  { hex: hex(12), name: 'Bangladesh',     money:   450n, goods: 250n,  energy: 120n,  education: 0.42, taxRate: 0.12, health: 0.55 },
+
+  // ----- East / SE Asia -----
+  { hex: hex(13), name: 'South Korea',    money:  1700n, goods: 300n,  energy: 250n,  education: 0.92, taxRate: 0.27, health: 0.90 },
+  { hex: hex(14), name: 'Indonesia',      money:  1300n, goods: 500n,  energy: 400n,  education: 0.50, taxRate: 0.16, health: 0.60 },
+  { hex: hex(15), name: 'Vietnam',        money:   430n, goods: 280n,  energy: 200n,  education: 0.55, taxRate: 0.20, health: 0.65 },
+
+  // ----- Middle East -----
+  { hex: hex(16), name: 'Saudi Arabia',   money:  1100n, goods: 200n,  energy: 1500n, education: 0.60, taxRate: 0.05, health: 0.72 },
+  { hex: hex(17), name: 'Turkey',         money:  1100n, goods: 350n,  energy: 250n,  education: 0.62, taxRate: 0.24, health: 0.68 },
+  { hex: hex(18), name: 'Iran',           money:   400n, goods: 250n,  energy: 800n,  education: 0.55, taxRate: 0.15, health: 0.65 },
+  { hex: hex(19), name: 'Israel',         money:   520n, goods: 150n,  energy: 100n,  education: 0.88, taxRate: 0.28, health: 0.87 },
+
+  // ----- Europe (additional) -----
+  { hex: hex(20), name: 'Russia',         money:  2100n, goods: 600n,  energy: 1800n, education: 0.65, taxRate: 0.20, health: 0.62 },
+  { hex: hex(21), name: 'Spain',          money:  1500n, goods: 200n,  energy: 180n,  education: 0.78, taxRate: 0.37, health: 0.85 },
+  { hex: hex(22), name: 'Poland',         money:   680n, goods: 200n,  energy: 220n,  education: 0.75, taxRate: 0.34, health: 0.78 },
+
+  // ----- Latin America -----
+  { hex: hex(23), name: 'Mexico',         money:  1700n, goods: 400n,  energy: 300n,  education: 0.55, taxRate: 0.17, health: 0.70 },
+
+  // ----- Africa -----
+  { hex: hex(24), name: 'Nigeria',        money:   440n, goods: 200n,  energy: 350n,  education: 0.30, taxRate: 0.08, health: 0.40 },
+  { hex: hex(25), name: 'South Africa',   money:   400n, goods: 200n,  energy: 250n,  education: 0.58, taxRate: 0.27, health: 0.60 },
+
+  // ----- Oceania -----
+  { hex: hex(26), name: 'Australia',      money:  1700n, goods: 300n,  energy: 500n,  education: 0.85, taxRate: 0.30, health: 0.88 },
 ];
 
 export const init = spacetimedb.init((ctx) => {
