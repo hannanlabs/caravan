@@ -165,7 +165,6 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
             <div className="card-title">World Map</div>
             <WorldMap myNation={myNation} nations={nationList} trustOut={trustOut} />
           </div>
-          <GdpHistoryCard history={moneyHistory} />
         </div>
 
         <div className="dash-col">
@@ -187,6 +186,7 @@ export function NationDashboard({ initialSnapshot }: NationDashboardProps) {
           )}
           <MetricsCard myNation={myNation} />
           <WorldEventsCard nations={nationList} year={world.year} status={status} />
+          <GdpHistoryCard history={moneyHistory} />
         </div>
       </div>
 
@@ -373,11 +373,12 @@ interface HeaderProps {
   onClaim: (name: string) => void;
   onStart: () => void;
   onOpenModal: (m: ActionModal) => void;
+  onViewStats: () => void;
 }
 
 function Header(props: HeaderProps) {
   const { isActive, myNation, rank, worldShare, totalGdp, history, status,
-    nameInput, setNameInput, onClaim, onStart, onOpenModal } = props;
+    nameInput, setNameInput, onClaim, onStart, onOpenModal, onViewStats } = props;
   const headlineGdp = myNation ? formatGdp(myNation.gdp) : { value: '—', unit: '' };
   const meta = myNation ? metaFor(myNation.name) : null;
 
@@ -395,10 +396,32 @@ function Header(props: HeaderProps) {
             <div className="country-sub">{meta?.govType ?? 'Caravan'}</div>
           </div>
         </div>
-        <div className="stat-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <Stat label="Reputation" value="—" foot="future" />
-          <Stat label="Health Index" value="—" foot="future" />
-        </div>
+        <button
+          onClick={onViewStats}
+          disabled={!myNation}
+          style={{
+            marginTop: 10,
+            background: myNation ? '#1a2138' : '#131826',
+            border: '1px solid #2a3550',
+            borderRadius: 8,
+            padding: '10px 14px',
+            color: myNation ? '#e5eaf2' : '#5a6580',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: myNation ? 'pointer' : 'not-allowed',
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            width: '100%',
+          }}
+        >
+          <span>📊 View live stats</span>
+          <span style={{ fontSize: 11, color: '#8b96b0', fontWeight: 400 }}>
+            {myNation ? 'GDP, resources, rank' : 'Claim a nation first'}
+          </span>
+        </button>
       </div>
 
       <div className="card">
@@ -643,7 +666,9 @@ function GdpHistoryCard({ history }: { history: MoneyPoint[] }) {
     return (
       <div className="card">
         <div className="card-title">Visualization · GDP over time</div>
-        <div className="card-empty">Make a move to start tracking history.</div>
+        <div className="card-empty" style={{ padding: '12px 0', fontSize: 12 }}>
+          Make a move to start tracking history.
+        </div>
       </div>
     );
   }
@@ -654,14 +679,47 @@ function GdpHistoryCard({ history }: { history: MoneyPoint[] }) {
   return (
     <div className="card">
       <div className="card-title">Visualization · GDP over time</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#8b96b0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8b96b0' }}>
         <span>Year {first.year.toFixed(2)} → {last.year.toFixed(2)}</span>
         <span style={{ color: delta >= 0 ? '#2ed573' : '#ff4757' }}>
           {delta >= 0 ? '+' : ''}{deltaPct.toFixed(1)}%
         </span>
       </div>
-      <Sparkline history={history} width={520} height={120} />
+      <div style={{ width: '100%' }}>
+        <ResponsiveSparkline history={history} height={70} />
+      </div>
     </div>
+  );
+}
+
+function ResponsiveSparkline({ history, height, stroke = '#3742fa' }: {
+  history: MoneyPoint[];
+  height: number;
+  stroke?: string;
+}) {
+  if (history.length < 2) return null;
+  const ys = history.map((p) => p.money);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const range = maxY - minY || 1;
+  // Use a viewBox with arbitrary width so it scales to container.
+  const viewW = 1000;
+  const stepX = viewW / (history.length - 1);
+  const points = history.map((p, i) => {
+    const x = i * stepX;
+    const y = height - ((p.money - minY) / range) * (height - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg
+      width="100%"
+      height={height}
+      viewBox={`0 0 ${viewW} ${height}`}
+      preserveAspectRatio="none"
+      style={{ display: 'block' }}
+    >
+      <polyline fill="none" stroke={stroke} strokeWidth={2.5} vectorEffect="non-scaling-stroke" points={points.join(' ')} />
+    </svg>
   );
 }
 
@@ -943,39 +1001,6 @@ function StatsModal({ open, onClose, myNation, rank, worldShare, nationCount, hi
   );
 }
 
-function StatsTriggerCard({ myNation, onOpen }: { myNation?: NationData; onOpen: () => void }) {
-  return (
-    <div
-      className="card"
-      onClick={myNation ? onOpen : undefined}
-      style={myNation ? { cursor: 'pointer' } : { opacity: 0.6 }}
-    >
-      <div className="card-title">My Nation</div>
-      {myNation ? (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 28 }}>{flagFor(myNation.name)}</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>{myNation.name}</div>
-              <div style={{ fontSize: 12, color: '#8b96b0' }}>GDP {formatGdpShort(myNation.gdp)}</div>
-            </div>
-          </div>
-          <button
-            onClick={onOpen}
-            style={{
-              background: '#1a2138', border: '1px solid #2a3550', borderRadius: 6,
-              padding: '6px 10px', color: '#e5eaf2', fontSize: 12, cursor: 'pointer', marginTop: 4,
-            }}
-          >
-            View live stats →
-          </button>
-        </>
-      ) : (
-        <Empty>Claim a nation to see your stats.</Empty>
-      )}
-    </div>
-  );
-}
 
 function HealthcareModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
